@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Moon Bounce: Solar System Adventure</title>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud">
+  <div class="top-bar">
+    <div class="row">
+      <div class="hud-left">
+        <div class="planet-name" id="planetName">Mercury</div>
+        <div class="goal-bar">
+          <div class="pill"><span>⭐</span><span id="starCount">0</span></div>
+          <div class="pill"><span>🎁</span><span id="boxCount">0/5</span></div>
+        </div>
+      </div>
+      <button class="menu-btn" id="menuBtn" aria-label="Menu">⏸</button>
+    </div>
+  </div>
+
+  <div class="planets" id="planets"></div>
+
+  <div id="sunArrow"><span class="arrow-emoji">☀️</span><span class="arrow-tip">▶</span></div>
+
+  <div class="controls" id="platControls">
+    <div class="dpad">
+      <div class="ctrl-btn" id="leftBtn">◀</div>
+      <div class="ctrl-btn" id="rightBtn">▶</div>
+    </div>
+    <div class="ctrl-btn jump-btn" id="jumpBtn">🦘<span>JUMP</span></div>
+  </div>
+
+  <div class="controls" id="flightControls">
+    <div class="dpad dpad-vert">
+      <div class="ctrl-btn" id="upBtn">▲</div>
+      <div class="ctrl-btn" id="downBtn">▼</div>
+    </div>
+    <div class="ctrl-btn shoot-btn" id="shootBtn">🔫<span>SHOOT</span></div>
+  </div>
+
+  <div id="flightHud">
+    <div class="flight-top">
+      <div class="flight-pill" id="flightTarget">🚀 Flying to Venus</div>
+      <button class="flight-skip" id="skipBtn">Skip ⏭</button>
+    </div>
+    <div class="flight-meter"><div class="flight-fill" id="flightFill"></div></div>
+    <div class="flight-hint" id="flightHint">▲ ▼ to steer • 🔫 shoot rocks • collect ⭐</div>
+  </div>
+</div>
+
+<div id="flightArrive"><span class="fa-emoji">🪐</span><span class="fa-text">Arriving!</span></div>
+
+<div class="overlay" id="fact">
+  <div class="ov-bg"></div>
+  <div class="card" id="factCard">
+    <span class="emoji" id="factEmoji">🪐</span>
+    <div class="kicker" id="factKicker">You found a Piece of the Sun!</div>
+    <div class="title" id="factTitle">Next: Venus</div>
+    <div class="body" id="factBody"></div>
+    <button class="replay-btn" id="replayBtn" aria-label="Hear it again">🔊 <span>Hear it again</span></button>
+    <button class="btn" id="factBtn">Next planet! 🚀</button>
+  </div>
+</div>
+
+<div class="overlay" id="win">
+  <div class="ov-bg"></div>
+  <div class="card">
+    <span class="emoji">🌟</span>
+    <div class="kicker">Amazing explorer!</div>
+    <div class="title">You collected every Piece of the Sun!</div>
+    <div class="body">You traveled across the whole solar system. The Sun is whole again!</div>
+    <button class="btn" id="winBtn">Play again 🔁</button>
+  </div>
+</div>
+
+<div id="bonus"><span class="b-emoji">🎉</span><span class="b-text">All facts found!</span></div>
+
+<!-- SPLASH -->
+<div id="splash">
+  <div class="splash-glow"></div>
+  <div class="splash-planet">🪐</div>
+  <h1 class="splash-title">Moon Bounce</h1>
+  <div class="splash-sub">Solar System Adventure</div>
+  <div class="splash-tap" id="splashTap">tap to begin ✨</div>
+</div>
+
+<!-- MAIN MENU -->
+<div id="menu" class="menu-screen">
+  <div class="menu-card">
+    <div class="menu-logo">🚀</div>
+    <h1 class="menu-title">Moon Bounce</h1>
+    <div class="menu-subtitle">Solar System Adventure</div>
+    <button class="menu-main-btn" id="playBtn">▶ Play</button>
+    <button class="menu-sec-btn menu-wide-btn" id="selectBtn">🪐 Choose Planet</button>
+    <div class="menu-row">
+      <button class="menu-sec-btn" id="howBtn">❓ How to Play</button>
+      <button class="menu-sec-btn" id="settingsBtn">⚙️ Settings</button>
+    </div>
+    <div class="menu-foot" id="menuProgress"></div>
+  </div>
+</div>
+
+<!-- PLANET SELECT -->
+<div id="select" class="menu-screen">
+  <div class="menu-card">
+    <h2 class="sheet-title">Choose Planet</h2>
+    <div class="planet-grid" id="planetGrid"></div>
+    <button class="menu-main-btn" id="selBackBtn">Back</button>
+  </div>
+</div>
+
+<!-- HOW TO PLAY -->
+<div id="howto" class="menu-screen">
+  <div class="menu-card">
+    <h2 class="sheet-title">How to Play</h2>
+    <div class="howto-list">
+      <div class="howto-item"><span class="hi-emoji">◀ ▶</span><span>Move around • tap <b>JUMP</b> to bounce</span></div>
+      <div class="howto-item"><span class="hi-emoji">🎁</span><span>Bump the <b>boxes</b> for fun space facts</span></div>
+      <div class="howto-item"><span class="hi-emoji">👾</span><span>Hop on the <b>cute aliens</b> for a star</span></div>
+      <div class="howto-item"><span class="hi-emoji">☀️</span><span>Find the <b>Piece of the Sun</b> to finish</span></div>
+      <div class="howto-item"><span class="hi-emoji">🚀</span><span>Fly your rocket to the next planet!</span></div>
+    </div>
+    <button class="menu-main-btn" id="howBackBtn">Got it!</button>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div id="settings" class="menu-screen">
+  <div class="menu-card">
+    <h2 class="sheet-title">Settings</h2>
+    <div class="set-list">
+      <button class="set-row" id="setRead"><span class="set-label">🔊 Read facts aloud</span><span class="set-toggle" id="setReadT">ON</span></button>
+      <button class="set-row" id="setMusic"><span class="set-label">🎵 Music</span><span class="set-toggle off" id="setMusicT">OFF</span></button>
+      <button class="set-row" id="setCalm"><span class="set-label">🌙 Calm Mode</span><span class="set-toggle off" id="setCalmT">OFF</span></button>
+    </div>
+    <div class="set-note">Calm Mode slows everything down and turns off sound.</div>
+    <button class="menu-main-btn" id="setBackBtn">Done</button>
+  </div>
+</div>
+
+<!-- PAUSE -->
+<div id="pause" class="menu-screen">
+  <div class="menu-card">
+    <h2 class="sheet-title">Paused</h2>
+    <button class="menu-main-btn" id="resumeBtn">▶ Resume</button>
+    <div class="menu-row">
+      <button class="menu-sec-btn" id="pauseSettingsBtn">⚙️ Settings</button>
+      <button class="menu-sec-btn" id="quitBtn">🏠 Menu</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
