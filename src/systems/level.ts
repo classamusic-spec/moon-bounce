@@ -98,6 +98,7 @@ export function clearLevel(game: Game): void {
   game.windZones = [];
   game.gaps = [];
   game.puffs.forEach(p => s.remove(p.mesh)); game.puffs = []; game.puffCd = 0;
+  game.freezables.forEach(f => { if (!f.frozen) s.remove(f.jet); }); game.freezables = [];
   if (game.powerBox) { s.remove(game.powerBox.group); game.powerBox = null; }
   if (game.windParticles) { s.remove(game.windParticles); game.windParticles = null; }
   if (game.sunPiece) { s.remove(game.sunPiece.group); game.sunPiece = null; }
@@ -215,9 +216,11 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
 
   buildDynamics(game, P);
 
-  // Power Box — grants this level's elemental power when bumped (horizontal levels)
-  if (P.power && P.powerBox !== undefined && game.levelType !== 'vertical') {
-    const bx = P.powerBox; const by = groundAt(bx) + 2.5;
+  // Power Box — grants this level's elemental power when bumped
+  if (P.power && P.powerBox !== undefined) {
+    const bx = P.powerBox;
+    // horizontal: float above the ground at bx; vertical: just above the start base
+    const by = game.levelType === 'vertical' ? GROUND_Y + 1.9 : groundAt(bx) + 2.5;
     const g = makePowerBox(powerTint(P.power)); g.position.set(bx, by, 0); scene.add(g);
     game.powerBox = { group: g, x: bx, baseY: by, used: false, bounce: 0 };
   }

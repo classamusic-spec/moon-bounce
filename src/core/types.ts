@@ -65,6 +65,8 @@ export interface Dyn {
   frost?: boolean;
   gusts?: GustDyn;
   bubbles?: number[];
+  /** [x, heightAboveGround] freezable spouts: ice-puff them into a solid platform/bridge. */
+  freezeSpots?: [number, number][];
 }
 
 export interface Planet {
@@ -211,6 +213,15 @@ export interface Puff {
 export interface Gap {
   x0: number;
   x1: number;
+}
+
+/** A freezable spout: hit it with an ice puff to turn it into a solid platform. */
+export interface Freezable {
+  jet: THREE.Group;
+  x: number;
+  height: number;
+  w: number;
+  frozen: boolean;
 }
 
 export interface Fx {

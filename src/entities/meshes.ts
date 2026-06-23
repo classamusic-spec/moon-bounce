@@ -185,6 +185,23 @@ export function makeGapCushion(width: number, color: number): THREE.Group {
   return g;
 }
 
+// A freezable spout (water/vapor jet) that rises to `height`. Ice-puff it to
+// freeze it into a solid platform.
+export function makeSpout(height: number): THREE.Group {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.75, 0.4, 16), new THREE.MeshStandardMaterial({ color: 0x6a86b8, roughness: 0.8 }));
+  base.position.y = 0.2; g.add(base);
+  const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, height, 14), new THREE.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: 0.5, emissive: 0x9fd0ff, emissiveIntensity: 0.35 }));
+  jet.position.y = height / 2 + 0.2; g.add(jet); g.userData.jet = jet;
+  return g;
+}
+
+// A solid, translucent ice-block platform (what a spout becomes when frozen).
+export function makeIceBlock(width: number, depth: number): THREE.Mesh {
+  const m = new THREE.MeshStandardMaterial({ color: 0xd6f0ff, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.85, emissive: 0x88bbdd, emissiveIntensity: 0.25, flatShading: true });
+  return new THREE.Mesh(new THREE.BoxGeometry(width, depth, 2.4), m);
+}
+
 export function makeBush(): THREE.Group {
   const g = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0x4fae6d, roughness: 0.85, emissive: 0x224422, emissiveIntensity: 0.1 });
   ([[0, 0.1, 0.55], [-0.4, -0.05, 0.4], [0.4, -0.05, 0.4], [0, 0.32, 0.4]] as [number, number, number][]).forEach(p => { const leaf = new THREE.Mesh(new THREE.SphereGeometry(p[2], 14, 11), m); leaf.position.set(p[0], p[1], 0); leaf.scale.y = 0.8; g.add(leaf); });

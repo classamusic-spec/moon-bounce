@@ -4,7 +4,7 @@ import { PLANETS } from './data/planets';
 import type {
   Mode, Flight, Platform, StarItem, FactBox, Enemy, Mover, Roller, Bubble,
   BouncePad, WindZone, MovingPlat, SunPiece, Fx, GustState, TerrainType,
-  PowerBox, Puff, Gap, PowerType,
+  PowerBox, Puff, Gap, PowerType, Freezable,
 } from './core/types';
 import { makeCharacter, makeStarMesh, applyBlobCosmetics } from './entities/meshes';
 import { colorById, hatById } from './data/cosmetics';
@@ -75,6 +75,7 @@ export class Game {
   puffCd = 0;
   powerActive = false;
   currentPower: PowerType | null = null;
+  freezables: Freezable[] = [];
 
   // level meta
   levelType: TerrainType = 'horizontal';
@@ -218,6 +219,14 @@ export class Game {
 
   squishEnemy(e: Enemy): void {
     e.alive = false; e.squish = 0.15; this.audio.sBop(); this.spawnFx(e.group.position, 0xfff0c0, 9);
+    const m = makeStarMesh(1, false); m.position.copy(e.group.position); m.position.y += 0.3; this.stage.scene.add(m);
+    this.starItems.push({ mesh: m, base: m.position.y, alive: true, reward: true, vy: 0.18 });
+  }
+
+  /** Ice-puff transform: freeze a friendly alien, who then poofs into a star. */
+  freezeEnemy(e: Enemy): void {
+    e.alive = false; e.squish = 0.15; this.audio.sIce(); this.spawnFx(e.group.position, 0x9fd8ff, 10);
+    (e.group.userData.mat as THREE.MeshStandardMaterial).color.setHex(0xbfe3ff);
     const m = makeStarMesh(1, false); m.position.copy(e.group.position); m.position.y += 0.3; this.stage.scene.add(m);
     this.starItems.push({ mesh: m, base: m.position.y, alive: true, reward: true, vy: 0.18 });
   }

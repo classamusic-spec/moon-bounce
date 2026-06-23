@@ -23,8 +23,9 @@ canvas { display:block; }
 .dpad { display:flex; gap:14px; pointer-events:auto; }
 .ctrl-btn { width:76px; height:76px; border-radius:50%; background:rgba(255,255,255,.18); backdrop-filter:blur(8px); border:3px solid rgba(255,255,255,.32); color:#fff; font-size:34px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:transform .1s,background .2s; touch-action:none; }
 .ctrl-btn:active,.ctrl-btn.pressed { transform:scale(.9); background:rgba(255,255,255,.34); }
-.jump-btn { width:96px; height:96px; font-size:30px; background:linear-gradient(135deg,rgba(125,200,255,.5),rgba(95,150,255,.5)); border-color:rgba(200,235,255,.6); pointer-events:auto; flex-direction:column; line-height:1; gap:2px; }
-.jump-btn span { font-size:13px; font-weight:800; letter-spacing:.5px; }
+.jump-btn { width:100px; height:100px; border-radius:50%; border:none; padding:0; color:#fff; background:radial-gradient(circle at 50% 34%, #ff7b6b 0%, #ef4444 46%, #c81f1f 100%); pointer-events:auto; display:flex; align-items:center; justify-content:center; box-shadow:0 9px 0 #8f1515, 0 14px 20px rgba(0,0,0,.45), inset 0 5px 9px rgba(255,255,255,.5), inset 0 -8px 12px rgba(120,10,10,.55); transition:transform .06s ease, box-shadow .06s ease; }
+.jump-btn span { font-size:21px; font-weight:800; letter-spacing:1px; color:#fff; text-shadow:0 2px 3px rgba(120,10,10,.7); }
+.jump-btn:active, .jump-btn.pressed { transform:translateY(7px) scale(1); background:radial-gradient(circle at 50% 34%, #f56b5b 0%, #d93838 46%, #b01a1a 100%); box-shadow:0 2px 0 #8f1515, 0 4px 8px rgba(0,0,0,.4), inset 0 4px 8px rgba(255,255,255,.35), inset 0 -5px 10px rgba(120,10,10,.6); }
 .right-cluster { display:flex; align-items:flex-end; gap:14px; pointer-events:none; }
 .puff-btn { display:none; width:78px; height:78px; font-size:26px; background:linear-gradient(135deg,rgba(255,170,90,.55),rgba(255,120,70,.5)); border-color:rgba(255,210,170,.65); pointer-events:auto; flex-direction:column; line-height:1; gap:2px; }
 .puff-btn span { font-size:12px; font-weight:800; letter-spacing:.5px; }
