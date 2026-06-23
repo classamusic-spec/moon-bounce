@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CHAR_R } from '../core/constants';
+import type { HatKind } from '../data/cosmetics';
 
 // All procedural mesh factories. Ported verbatim from the prototype.
 // Each returns a fresh Object3D; callers add it to a scene and position it.
@@ -16,11 +17,67 @@ export function makeCharacter(): THREE.Group {
   [-0.15, 0.15].forEach(x => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 16), eyeMat); e.position.set(x, 0.15, 0.78); char.add(e); const p = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 12), pup); p.position.set(x, 0.13, 0.85); char.add(p); });
   const smile = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.03, 12, 24, Math.PI), new THREE.MeshStandardMaterial({ color: 0x223044 }));
   smile.position.set(0, -0.02, 0.78); smile.rotation.z = Math.PI; char.add(smile);
+  // Antenna + bulb live in a group so a hat can hide them when worn.
+  const antenna = new THREE.Group();
   const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 8), new THREE.MeshStandardMaterial({ color: 0xcccccc }));
-  ant.position.set(0, 0.8, 0); char.add(ant);
+  ant.position.set(0, 0.8, 0); antenna.add(ant);
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), new THREE.MeshStandardMaterial({ color: 0xff7a7a, emissive: 0xff4444, emissiveIntensity: 0.8 }));
-  bulb.position.set(0, 0.97, 0); char.add(bulb); char.userData.bulb = bulb;
+  bulb.position.set(0, 0.97, 0); antenna.add(bulb);
+  char.add(antenna); char.userData.antenna = antenna; char.userData.bulb = bulb;
+  // Holder for the equipped hat (filled by applyBlobCosmetics).
+  const hatHolder = new THREE.Group(); hatHolder.position.set(0, 0.5, 0.05); char.add(hatHolder); char.userData.hatHolder = hatHolder;
   return char;
+}
+
+function disposeObject(o: THREE.Object3D): void {
+  o.traverse(n => {
+    const m = n as THREE.Mesh;
+    if (m.geometry) m.geometry.dispose();
+    const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+    if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else if (mat) mat.dispose();
+  });
+}
+
+// Build a hat sized to sit on the head (base at local y=0, facing +z).
+export function makeHat(kind: HatKind): THREE.Group {
+  const g = new THREE.Group();
+  if (kind === 'party') {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.58, 18), new THREE.MeshStandardMaterial({ color: 0xff6fae, roughness: 0.5 }));
+    cone.position.y = 0.29; g.add(cone);
+    const pom = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10), new THREE.MeshStandardMaterial({ color: 0xfff0a0, emissive: 0xffd34d, emissiveIntensity: 0.4 }));
+    pom.position.y = 0.6; g.add(pom);
+  } else if (kind === 'bow') {
+    const mat = new THREE.MeshStandardMaterial({ color: 0xff7aa8, roughness: 0.5, emissive: 0x551133, emissiveIntensity: 0.15 });
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), mat); knot.position.y = 0.12; g.add(knot);
+    [-1, 1].forEach(s => { const w = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.26, 10), mat); w.position.set(s * 0.2, 0.12, 0); w.rotation.z = s * Math.PI / 2; g.add(w); });
+  } else if (kind === 'cap') {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x5a8fff, roughness: 0.5 });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.36, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), mat); dome.position.y = 0.06; g.add(dome);
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.34), mat); brim.position.set(0, 0.06, 0.34); g.add(brim);
+  } else if (kind === 'crown') {
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffd34d, metalness: 0.5, roughness: 0.3, emissive: 0x6a4a00, emissiveIntensity: 0.25 });
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.22, 16, 1, true), mat); band.position.y = 0.16; g.add(band);
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 8), mat); spike.position.set(Math.cos(a) * 0.32, 0.32, Math.sin(a) * 0.32); g.add(spike); }
+  } else if (kind === 'tophat') {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.4 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.06, 24), mat); brim.position.y = 0.03; g.add(brim);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.5, 24), mat); top.position.y = 0.3; g.add(top);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.275, 0.275, 0.1, 24), new THREE.MeshStandardMaterial({ color: 0xff6fae, roughness: 0.5 })); band.position.y = 0.12; g.add(band);
+  }
+  return g;
+}
+
+// Apply the equipped color + hat to a character built by makeCharacter().
+export function applyBlobCosmetics(char: THREE.Group, hex: number, hatKind: HatKind): void {
+  const bodyMat = char.userData.bodyMat as THREE.MeshStandardMaterial | undefined;
+  if (bodyMat) bodyMat.color.setHex(hex);
+  const holder = char.userData.hatHolder as THREE.Group | undefined;
+  const antenna = char.userData.antenna as THREE.Group | undefined;
+  if (holder) {
+    while (holder.children.length) { const c = holder.children[0]!; holder.remove(c); disposeObject(c); }
+    if (hatKind !== 'none') holder.add(makeHat(hatKind));
+  }
+  if (antenna) antenna.visible = (hatKind === 'none');
 }
 
 export function makeStarMesh(scale: number, sun: boolean): THREE.Mesh {

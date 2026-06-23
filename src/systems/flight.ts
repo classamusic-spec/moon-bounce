@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FLIGHT_SECONDS } from '../core/constants';
 import { PLANETS } from '../data/planets';
 import { makeStarMesh } from '../entities/meshes';
+import { colorById } from '../data/cosmetics';
 import type { Game } from '../main_game';
 
 // The 60-second flight mini-game between levels: intro hop-in, steerable flight
@@ -73,7 +74,7 @@ export function startFlight(game: Game): void {
 
   // the hopping blob (matches the player character look)
   const blob = new THREE.Group();
-  const bMat = new THREE.MeshStandardMaterial({ color: PLANETS[game.pIndex]!.char || 0xa8e0ff, roughness: 0.35, emissive: 0x223344, emissiveIntensity: 0.25 });
+  const bMat = new THREE.MeshStandardMaterial({ color: colorById(game.storage.equippedColor).hex, roughness: 0.35, emissive: 0x223344, emissiveIntensity: 0.25 });
   const bBody = new THREE.Mesh(new THREE.SphereGeometry(0.5, 28, 22), bMat); bBody.scale.set(1, 0.92, 1); blob.add(bBody);
   const bVisor = new THREE.Mesh(new THREE.SphereGeometry(0.32, 24, 18, 0, Math.PI * 2, 0, Math.PI * 0.62), new THREE.MeshStandardMaterial({ color: 0x16243a, roughness: 0.1, metalness: 0.3, emissive: 0x0a1830, emissiveIntensity: 0.4 })); bVisor.position.set(0, 0.07, 0.3); bVisor.rotation.x = 0.3; blob.add(bVisor);
   const beM = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.5 });
@@ -226,7 +227,7 @@ export function updateFlight(game: Game): void {
     if (f.pRing) { f.pRing.position.copy(f.planet.position); }
 
     // bonus stars move left (slower), collect on overlap
-    f.bonusStars.forEach(m => { m.position.x -= 0.11 * sp * fr; m.rotation.z += m.userData.spin; if (m.position.x > -900 && Math.hypot(m.position.x - f.rocket.position.x, m.position.y - f.rocket.position.y) < 1.2) { flightBurst(game, m.position.clone(), 0xffe9a8); m.position.x = -999; game.smallStars++; game.updateHUD(); if (!game.calm) game.audio.sStar(); } });
+    f.bonusStars.forEach(m => { m.position.x -= 0.11 * sp * fr; m.rotation.z += m.userData.spin; if (m.position.x > -900 && Math.hypot(m.position.x - f.rocket.position.x, m.position.y - f.rocket.position.y) < 1.2) { flightBurst(game, m.position.clone(), 0xffe9a8); m.position.x = -999; game.smallStars++; game.storage.addStars(1); game.updateHUD(); if (!game.calm) game.audio.sStar(); } });
     f.bonusStars = f.bonusStars.filter(m => { if (m.position.x < -30) { f.fscene.remove(m); return false; } return true; });
 
     // lasers fly right, pop asteroids

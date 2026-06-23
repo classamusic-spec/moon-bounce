@@ -1,12 +1,14 @@
 import { PLANETS } from '../data/planets';
+import { colorById, hatById, freeOwnedIds } from '../data/cosmetics';
 
 // Persistent save. Versioned so features can extend the shape without wiping a
 // child's progress. localStorage may be unavailable (private mode, embedded
 // webview), so every access is guarded and falls back to in-memory defaults.
 //
 // v1: { lastPlanet, highestUnlocked }
-// v2: + factsFound[planet][fact] (the Space Journal) and stickers[] (the
-//     Sticker book). v1 saves migrate forward, preserving progress.
+// v2: + factsFound[planet][fact] (Space Journal) and stickers[] (Sticker book)
+// v3: + starsBank, owned[] cosmetics, equipped {color,hat} (Dress Up)
+//     Older saves migrate forward, preserving progress.
 
 const KEY = 'moonbounce.save.v1'; // stable key across versions
 const MAX = PLANETS.length - 1;
@@ -17,14 +19,22 @@ export function planetStickerId(i: number): string { return 'planet-' + i; }
 /** Sticker id for completing every planet. */
 export const SOLAR_STICKER = 'solar-system';
 
-export interface SaveV2 {
-  v: 2;
+export type CosmeticSlot = 'color' | 'hat';
+
+export interface SaveV3 {
+  v: 3;
   lastPlanet: number;
   highestUnlocked: number;
   /** factsFound[planetIndex][factIndex] — which of the 5 facts are discovered. */
   factsFound: boolean[][];
   /** Earned sticker ids. */
   stickers: string[];
+  /** Lifetime stars available to spend on cosmetics. */
+  starsBank: number;
+  /** Owned cosmetic ids (free items are always owned). */
+  owned: string[];
+  /** Currently equipped cosmetic ids. */
+  equipped: { color: string; hat: string };
 }
 
 function clampIndex(n: unknown): number {
@@ -50,31 +60,55 @@ function normalizeFacts(input: unknown): boolean[][] {
   return out;
 }
 
-function makeDefault(): SaveV2 {
-  return { v: 2, lastPlanet: 0, highestUnlocked: 0, factsFound: emptyFacts(), stickers: [] };
+function defaultEquipped(): { color: string; hat: string } {
+  return { color: COLORS_DEFAULT, hat: HAT_DEFAULT };
 }
 
-function read(): SaveV2 {
+function makeDefault(): SaveV3 {
+  return {
+    v: 3, lastPlanet: 0, highestUnlocked: 0, factsFound: emptyFacts(), stickers: [],
+    starsBank: 0, owned: freeOwnedIds(), equipped: defaultEquipped(),
+  };
+}
+
+function stringArray(input: unknown): string[] {
+  return Array.isArray(input) ? (input as unknown[]).filter((s): s is string => typeof s === 'string') : [];
+}
+
+function read(): SaveV3 {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return makeDefault();
     const d = JSON.parse(raw) as Record<string, unknown>;
-    if (!d || (d.v !== 1 && d.v !== 2)) return makeDefault();
-    // v1 and v2 share these two fields; v1 simply lacks facts/stickers.
+    if (!d || (d.v !== 1 && d.v !== 2 && d.v !== 3)) return makeDefault();
+    // Fields are shared across versions; missing ones fall back to defaults,
+    // so v1/v2 saves migrate forward without losing progress.
+    const eq = (d.equipped && typeof d.equipped === 'object') ? d.equipped as Record<string, unknown> : {};
+    const owned = new Set<string>([...freeOwnedIds(), ...stringArray(d.owned)]);
+    const equippedColor = typeof eq.color === 'string' && owned.has(eq.color) ? eq.color : COLORS_DEFAULT;
+    const equippedHat = typeof eq.hat === 'string' && owned.has(eq.hat) ? eq.hat : HAT_DEFAULT;
     return {
-      v: 2,
+      v: 3,
       lastPlanet: clampIndex(d.lastPlanet),
       highestUnlocked: clampIndex(d.highestUnlocked),
       factsFound: normalizeFacts(d.factsFound),
-      stickers: Array.isArray(d.stickers) ? (d.stickers as unknown[]).filter((s): s is string => typeof s === 'string') : [],
+      stickers: stringArray(d.stickers),
+      starsBank: typeof d.starsBank === 'number' && Number.isFinite(d.starsBank) ? Math.max(0, Math.floor(d.starsBank)) : 0,
+      owned: [...owned],
+      equipped: { color: equippedColor, hat: equippedHat },
     };
   } catch {
     return makeDefault();
   }
 }
 
+// Default cosmetic ids (free starters). Resolved through the catalog so a
+// renamed/removed cosmetic can't leave the save pointing at nothing.
+const COLORS_DEFAULT = colorById('color-blue').id;
+const HAT_DEFAULT = hatById('hat-none').id;
+
 export class Storage {
-  private data: SaveV2;
+  private data: SaveV3;
 
   constructor() {
     this.data = read();
@@ -122,6 +156,32 @@ export class Storage {
   // ---- Sticker book ----
   stickers(): string[] { return this.data.stickers.slice(); }
   hasSticker(id: string): boolean { return this.data.stickers.includes(id); }
+
+  // ---- Stars & cosmetics (Dress Up) ----
+  get stars(): number { return this.data.starsBank; }
+  addStars(n: number): void { if (n > 0) { this.data.starsBank += n; this.persist(); } }
+  canAfford(cost: number): boolean { return this.data.starsBank >= cost; }
+  owns(id: string): boolean { return this.data.owned.includes(id); }
+
+  /** Buy a cosmetic if affordable and not already owned. Returns success. */
+  buy(id: string, cost: number): boolean {
+    if (this.owns(id)) return true;
+    if (this.data.starsBank < cost) return false;
+    this.data.starsBank -= cost;
+    this.data.owned.push(id);
+    this.persist();
+    return true;
+  }
+
+  /** Equip an owned cosmetic into a slot. */
+  equip(slot: CosmeticSlot, id: string): void {
+    if (!this.owns(id)) return;
+    this.data.equipped[slot] = id;
+    this.persist();
+  }
+
+  get equippedColor(): string { return this.data.equipped.color; }
+  get equippedHat(): string { return this.data.equipped.hat; }
 
   /** Award any stickers the current progress has earned. */
   private refreshStickers(): void {

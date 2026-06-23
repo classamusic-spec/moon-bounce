@@ -5,7 +5,8 @@ import type {
   Mode, Flight, Platform, StarItem, FactBox, Enemy, Mover, Roller, Bubble,
   BouncePad, WindZone, MovingPlat, SunPiece, Fx, GustState, TerrainType,
 } from './core/types';
-import { makeCharacter, makeStarMesh } from './entities/meshes';
+import { makeCharacter, makeStarMesh, applyBlobCosmetics } from './entities/meshes';
+import { colorById, hatById } from './data/cosmetics';
 import { AudioSystem } from './systems/audio';
 import { Stage, loadLevel } from './systems/level';
 import { updateDynamics } from './systems/dynamics';
@@ -87,6 +88,7 @@ export class Game {
   init(): void {
     this.char = makeCharacter();
     this.stage.scene.add(this.char);
+    this.refreshBlob();
     this.ui.buildPlanetDots();
     // Resume where the player left off (defaults to Mercury on a fresh save).
     const resume = this.storage.resumePlanet();
@@ -114,6 +116,11 @@ export class Game {
 
   toggleCalm(): void { this.calm = !this.calm; this.audio.calm = this.calm; if (this.calm) this.audio.stopSpeak(); }
 
+  /** Re-apply the equipped color + hat to the player character. */
+  refreshBlob(): void {
+    applyBlobCosmetics(this.char, colorById(this.storage.equippedColor).hex, hatById(this.storage.equippedHat).kind);
+  }
+
   goToPlanet(i: number): void {
     this.audio.resume();
     // make sure we're cleanly in platformer mode
@@ -134,7 +141,7 @@ export class Game {
 
   // ---- rewards / interactions ----
   collectStar(s: StarItem): void {
-    s.alive = false; this.audio.sStar(); this.spawnFx(s.mesh.position, 0xffe9a8); this.stage.scene.remove(s.mesh); this.smallStars++; this.updateHUD();
+    s.alive = false; this.audio.sStar(); this.spawnFx(s.mesh.position, 0xffe9a8); this.stage.scene.remove(s.mesh); this.smallStars++; this.storage.addStars(1); this.updateHUD();
   }
 
   spawnFx(pos: THREE.Vector3, color: number, n?: number): void {

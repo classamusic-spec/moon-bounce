@@ -1,6 +1,9 @@
 import { PLANETS } from '../data/planets';
 import { FLIGHT_SECONDS } from '../core/constants';
 import { planetStickerId, SOLAR_STICKER } from '../systems/storage';
+import type { CosmeticSlot } from '../systems/storage';
+import { COLORS, HATS, colorById, hatById } from '../data/cosmetics';
+import type { ColorCosmetic, HatCosmetic } from '../data/cosmetics';
 import type { Game } from '../main_game';
 
 // All DOM / HUD / menu wiring. View methods plus a single bind(game) that
@@ -154,6 +157,55 @@ export class UI {
     });
   }
 
+  // The Dress Up screen: spend collected stars on blob colors and hats. Purely
+  // cosmetic. Tapping an owned item equips it; an unowned affordable item is
+  // bought then equipped; an unaffordable item gives a gentle shake.
+  buildCustomize(game: Game): void {
+    const storage = game.storage;
+
+    // live CSS preview of the blob
+    const body = document.getElementById('bpBody');
+    if (body) body.style.background = '#' + colorById(storage.equippedColor).hex.toString(16).padStart(6, '0');
+    const hat = document.getElementById('bpHat');
+    if (hat) { const h = hatById(storage.equippedHat); hat.textContent = h.kind === 'none' ? '' : h.emoji; }
+
+    const bank = document.getElementById('custBank');
+    if (bank) bank.textContent = '⭐ ' + storage.stars;
+
+    const makeItem = (slot: CosmeticSlot, id: string, cost: number, equippedId: string, inner: HTMLElement, label: string): HTMLButtonElement => {
+      const owned = storage.owns(id);
+      const equipped = equippedId === id;
+      const item = document.createElement('button');
+      item.className = 'cust-item' + (owned ? ' owned' : ' locked') + (equipped ? ' equipped' : '') + (!owned && !storage.canAfford(cost) ? ' cant' : '');
+      item.appendChild(inner);
+      const lab = document.createElement('span'); lab.className = 'cust-label'; lab.textContent = label; item.appendChild(lab);
+      if (!owned) { const c = document.createElement('span'); c.className = 'cust-cost'; c.textContent = '⭐' + cost; item.appendChild(c); }
+      item.addEventListener('click', () => {
+        if (storage.owns(id)) { storage.equip(slot, id); game.refreshBlob(); this.buildCustomize(game); return; }
+        if (storage.buy(id, cost)) { storage.equip(slot, id); game.refreshBlob(); this.buildCustomize(game); }
+        else { item.classList.remove('shake'); void item.offsetWidth; item.classList.add('shake'); }
+      });
+      return item;
+    };
+
+    const colorGrid = document.getElementById('colorGrid');
+    if (colorGrid) {
+      colorGrid.innerHTML = '';
+      COLORS.forEach((c: ColorCosmetic) => {
+        const sw = document.createElement('span'); sw.className = 'cust-swatch'; sw.style.background = '#' + c.hex.toString(16).padStart(6, '0');
+        colorGrid.appendChild(makeItem('color', c.id, c.cost, storage.equippedColor, sw, c.label));
+      });
+    }
+    const hatGrid = document.getElementById('hatGrid');
+    if (hatGrid) {
+      hatGrid.innerHTML = '';
+      HATS.forEach((h: HatCosmetic) => {
+        const em = document.createElement('span'); em.className = 'cust-hat-emoji'; em.textContent = h.emoji;
+        hatGrid.appendChild(makeItem('hat', h.id, h.cost, storage.equippedHat, em, h.label));
+      });
+    }
+  }
+
   // ---- fact card ----
   prepBoxFact(planetName: string, fact: string, replayHidden: boolean): void {
     const c = this.byId('factCard'); c.classList.add('factbox');
@@ -241,6 +293,8 @@ export class UI {
     this.byId('selBackBtn').addEventListener('click', () => { hide('select'); show('menu'); });
     this.byId('journalBtn').addEventListener('click', () => { this.buildJournal(game); hide('menu'); show('journal'); });
     this.byId('journalBackBtn').addEventListener('click', () => { game.audio.stopSpeak(); hide('journal'); show('menu'); });
+    this.byId('customizeBtn').addEventListener('click', () => { this.buildCustomize(game); hide('menu'); show('customize'); });
+    this.byId('custBackBtn').addEventListener('click', () => { hide('customize'); show('menu'); });
 
     // pause
     this.byId('menuBtn').addEventListener('click', () => { if (game.started && game.mode === 'platformer' && !game.paused && !this.isFactShown()) { game.paused = true; show('pause'); } });
