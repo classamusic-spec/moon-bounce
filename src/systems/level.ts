@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { LEVEL_LEN, GROUND_Y, CHAR_R } from '../core/constants';
 import type { Planet } from '../core/types';
-import { makeStarMesh, makeFactBox, makeEnemy } from '../entities/meshes';
+import { makeStarMesh, makeFactBox, makeEnemy, makePowerBox, makeGapCushion } from '../entities/meshes';
 import { buildDynamics } from './dynamics';
+import { powerTint } from './powers';
 import type { Game } from '../main_game';
+
+export const CATCH_DROP = 3.0; // how far below ground the gap catch cushion sits
 
 // Stage: owns the Three.js scene/camera/renderer/clock, the parallax layers,
 // and the gradient sky background. Ported from the prototype's init() + helpers.
@@ -93,6 +96,9 @@ export function clearLevel(game: Game): void {
   game.movingPlats.forEach(m => s.remove(m.mesh)); game.movingPlats = [];
   game.decor.forEach(d => s.remove(d)); game.decor = [];
   game.windZones = [];
+  game.gaps = [];
+  game.puffs.forEach(p => s.remove(p.mesh)); game.puffs = []; game.puffCd = 0;
+  if (game.powerBox) { s.remove(game.powerBox.group); game.powerBox = null; }
   if (game.windParticles) { s.remove(game.windParticles); game.windParticles = null; }
   if (game.sunPiece) { s.remove(game.sunPiece.group); game.sunPiece = null; }
   const mid = game.stage.parallaxMid;
@@ -103,6 +109,9 @@ export function clearLevel(game: Game): void {
 export function loadLevel(game: Game, P: Planet, instant: boolean): void {
   clearLevel(game);
   game.level = P;
+  game.currentPower = P.power ?? null;
+  game.powerActive = false;
+  game.ui.setPuffVisible(false);
   const stage = game.stage;
   const scene = stage.scene;
   const T = P.terrain || { type: 'horizontal' as const };
@@ -150,6 +159,12 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
     [0.18, 0.40, 0.62, 0.82].map(f => Math.min(N - 1, Math.max(1, Math.round(f * (N - 1))))).forEach(k => { const c = climb[k]!; const g = makeEnemy(P.enemy); g.position.set(c[0], GROUND_Y + c[1] + 0.5, 0); scene.add(g); game.enemies.push({ group: g, baseY: GROUND_Y + c[1] + 0.5, dir: Math.random() < 0.5 ? -1 : 1, range: 1.2, home: c[0], alive: true, squish: 1, onPlat: c[0] }); });
 
   } else {
+    // soft gaps: holes in the ground with a catch cushion below (no fail)
+    const gaps = T.gaps || [];
+    game.gaps = gaps.map(g => ({ x0: g[0], x1: g[1] }));
+    game.catchY = GROUND_Y - CATCH_DROP;
+    const inGap = (x: number) => gaps.some(g => x >= g[0] && x <= g[1]);
+
     // horizontal ground built from steps or a shaped strip
     if (T.steps) {
       T.steps.forEach(s => {
@@ -157,9 +172,20 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
         for (let x = s[0]; x < s[1]; x += 2.4) { const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + 1, GROUND_Y + s[2], -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
       });
     } else {
-      const slab = new THREE.Mesh(new THREE.BoxGeometry(LEVEL_LEN + 6, 4, 6), gmat); slab.position.set(0, GROUND_Y - 2, -0.5); groundGroup.add(slab);
-      for (let x = -LEVEL_LEN / 2; x <= LEVEL_LEN / 2; x += 2.2) { const gy = groundAt(x); const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + Math.random() * 0.5, gy, -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
+      // build the base slab in segments so gaps are real holes you can see through
+      const minE = -LEVEL_LEN / 2 - 3, maxE = LEVEL_LEN / 2 + 3;
+      const segs: [number, number][] = [];
+      if (gaps.length) {
+        const sorted = [...gaps].sort((a, b) => a[0] - b[0]);
+        let cursor = minE;
+        for (const g of sorted) { if (g[0] > cursor) segs.push([cursor, g[0]]); cursor = Math.max(cursor, g[1]); }
+        if (cursor < maxE) segs.push([cursor, maxE]);
+      } else { segs.push([minE, maxE]); }
+      segs.forEach(([a, b]) => { const w = b - a; const slab = new THREE.Mesh(new THREE.BoxGeometry(w, 4, 6), gmat); slab.position.set((a + b) / 2, GROUND_Y - 2, -0.5); groundGroup.add(slab); });
+      for (let x = -LEVEL_LEN / 2; x <= LEVEL_LEN / 2; x += 2.2) { if (inGap(x)) continue; const gy = groundAt(x); const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + Math.random() * 0.5, gy, -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
     }
+    // catch cushions beneath each gap
+    gaps.forEach(g => { const w = g[1] - g[0]; const cu = makeGapCushion(w, P.hill); cu.position.set((g[0] + g[1]) / 2, game.catchY - 0.4, 0); scene.add(cu); game.decor.push(cu); });
     // mesas (optional)
     (T.mesas || []).forEach(m => { const mesa = new THREE.Mesh(new THREE.BoxGeometry(6, 1.4, 5), bmat); mesa.position.set(m[0], GROUND_Y + m[1], -0.3); groundGroup.add(mesa); game.platforms.push({ mesh: mesa, x: m[0], y: GROUND_Y + m[1], w: 6, top: GROUND_Y + m[1] + 0.7 }); });
     game.levelMinX = -LEVEL_LEN / 2 + 2.2; game.levelMaxX = LEVEL_LEN / 2 + 1;
@@ -174,8 +200,8 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
     // fact boxes above ground
     [-34, -17, 0, 17, 34].forEach((bx, idx) => { const by = groundAt(bx) + 2.5; const g = makeFactBox(); g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, factIndex: idx, bounce: 0 }); });
 
-    // enemies on ground
-    [-38, -24, -10, 6, 22, 38].forEach(ex => { const ey = groundAt(ex) + 0.5; const g = makeEnemy(P.enemy); g.position.set(ex, ey, 0); scene.add(g); game.enemies.push({ group: g, baseY: ey, dir: Math.random() < 0.5 ? -1 : 1, range: 2.0, home: ex, alive: true, squish: 1 }); });
+    // enemies on ground (skip any that would float over a gap)
+    [-38, -24, -10, 6, 22, 38].forEach(ex => { if (inGap(ex)) return; const ey = groundAt(ex) + 0.5; const g = makeEnemy(P.enemy); g.position.set(ex, ey, 0); scene.add(g); game.enemies.push({ group: g, baseY: ey, dir: Math.random() < 0.5 ? -1 : 1, range: 2.0, home: ex, alive: true, squish: 1 }); });
   }
 
   // mid-parallax hills + background orb (both level types)
@@ -188,6 +214,13 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
   (T.movingPlats || []).forEach(mp => { const w = 2.8; const plat = new THREE.Mesh(new THREE.BoxGeometry(w, 0.45, 2.2), new THREE.MeshStandardMaterial({ color: P.hill, roughness: 0.7, emissive: 0x223344, emissiveIntensity: 0.15, metalness: 0.2 })); const py = GROUND_Y + mp.y; plat.position.set(mp.x, py, 0); scene.add(plat); game.movingPlats.push({ mesh: plat, baseX: mp.x, baseY: py, axis: mp.axis, range: mp.range, speed: mp.speed, phase: Math.random() * 6, w: w, top: py + 0.22 }); });
 
   buildDynamics(game, P);
+
+  // Power Box — grants this level's elemental power when bumped (horizontal levels)
+  if (P.power && P.powerBox !== undefined && game.levelType !== 'vertical') {
+    const bx = P.powerBox; const by = groundAt(bx) + 2.5;
+    const g = makePowerBox(powerTint(P.power)); g.position.set(bx, by, 0); scene.add(g);
+    game.powerBox = { group: g, x: bx, baseY: by, used: false, bounce: 0 };
+  }
 
   // Piece of the Sun — at far right (horizontal) or top (vertical)
   const sg = new THREE.Group(); const sunMesh = makeStarMesh(2.2, true); sg.add(sunMesh);

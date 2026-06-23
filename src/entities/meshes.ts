@@ -153,6 +153,38 @@ export function makeFlare(): THREE.Group {
   return g;
 }
 
+// A special, glowing box that grants the level's elemental power.
+export function makePowerBox(tint: number): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: tint, roughness: 0.3, metalness: 0.2, emissive: tint, emissiveIntensity: 0.6 });
+  const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat); cube.rotation.y = Math.PI / 4; g.add(cube); g.userData.cube = cube; g.userData.mat = mat;
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.95, 18, 14), new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.18 })); g.add(glow);
+  // a little spark/star icon floating in the middle of each face
+  const sparkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.8 });
+  const spark = new THREE.Mesh(new THREE.IcosahedronGeometry(0.18, 0), sparkMat); spark.position.set(0, 0, 0.55); g.add(spark);
+  const spark2 = spark.clone(); spark2.position.set(0, 0, -0.55); g.add(spark2);
+  return g;
+}
+
+// A soft glowing puff projectile (warm = flame, cool = ice, etc.).
+export function makePuff(color: number): THREE.Group {
+  const g = new THREE.Group();
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })); g.add(g.userData.core = core);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3 })); g.add(glow);
+  return g;
+}
+
+// A soft cushion that sits below a gap and bounces the blob back up (no fail).
+export function makeGapCushion(width: number, color: number): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, emissive: color, emissiveIntensity: 0.12 });
+  const mound = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), mat);
+  mound.scale.set(width / 2 + 0.6, 0.5, 1.4); g.add(mound);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 }));
+  glow.scale.set(width / 2 + 0.7, 0.55, 1.5); glow.position.y = 0.02; g.add(glow);
+  return g;
+}
+
 export function makeBush(): THREE.Group {
   const g = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0x4fae6d, roughness: 0.85, emissive: 0x224422, emissiveIntensity: 0.1 });
   ([[0, 0.1, 0.55], [-0.4, -0.05, 0.4], [0.4, -0.05, 0.4], [0, 0.32, 0.4]] as [number, number, number][]).forEach(p => { const leaf = new THREE.Mesh(new THREE.SphereGeometry(p[2], 14, 11), m); leaf.position.set(p[0], p[1], 0); leaf.scale.y = 0.8; g.add(leaf); });

@@ -5,6 +5,9 @@ import * as THREE from 'three';
 export type TerrainType = 'horizontal' | 'vertical';
 export type Axis = 'x' | 'y';
 
+/** Elemental power a level offers (granted by its Power Box). */
+export type PowerType = 'flame' | 'ice' | 'bubble' | 'spark';
+
 export interface MovingPlatData {
   x: number;
   y: number;
@@ -27,6 +30,8 @@ export interface Terrain {
   /** [x, y] climb ledges (vertical levels) */
   climb?: [number, number][];
   movingPlats?: MovingPlatData[];
+  /** [x0, x1] holes in the ground; a soft catch below bounces the blob back (no fail). */
+  gaps?: [number, number][];
 }
 
 export interface WindDyn {
@@ -79,6 +84,10 @@ export interface Planet {
   rings?: boolean;
   dyn?: Dyn;
   terrain: Terrain;
+  /** Elemental power this level offers via its Power Box. */
+  power?: PowerType;
+  /** X position of the Power Box (above the ground at that x). */
+  powerBox?: number;
 }
 
 // ---------- Runtime entity types ----------
@@ -182,6 +191,26 @@ export interface SunPiece {
   mesh: THREE.Mesh;
   glow: THREE.Mesh;
   y: number;
+}
+
+export interface PowerBox {
+  group: THREE.Group;
+  x: number;
+  baseY: number;
+  used: boolean;
+  bounce: number;
+}
+
+export interface Puff {
+  mesh: THREE.Group;
+  vx: number;
+  life: number;
+}
+
+/** A gap in the ground + the catch height that bounces the blob back up. */
+export interface Gap {
+  x0: number;
+  x1: number;
 }
 
 export interface Fx {

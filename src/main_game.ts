@@ -4,9 +4,11 @@ import { PLANETS } from './data/planets';
 import type {
   Mode, Flight, Platform, StarItem, FactBox, Enemy, Mover, Roller, Bubble,
   BouncePad, WindZone, MovingPlat, SunPiece, Fx, GustState, TerrainType,
+  PowerBox, Puff, Gap, PowerType,
 } from './core/types';
 import { makeCharacter, makeStarMesh, applyBlobCosmetics } from './entities/meshes';
 import { colorById, hatById } from './data/cosmetics';
+import { castPuff, updatePuffs } from './systems/powers';
 import type { Planet } from './core/types';
 import type { Moon } from './data/moons';
 import { AudioSystem } from './systems/audio';
@@ -65,6 +67,15 @@ export class Game {
   windParticles: THREE.Points | null = null;
   movingPlats: MovingPlat[] = [];
 
+  // soft gaps + elemental power
+  gaps: Gap[] = [];
+  catchY = GROUND_Y - 3.0;
+  powerBox: PowerBox | null = null;
+  puffs: Puff[] = [];
+  puffCd = 0;
+  powerActive = false;
+  currentPower: PowerType | null = null;
+
   // level meta
   levelType: TerrainType = 'horizontal';
   levelHeight = 34;
@@ -112,6 +123,16 @@ export class Game {
   loadMoon(moon: Moon): void { this.onMoon = true; this.currentMoon = moon; loadLevel(this, moon, true); }
   startFlight(): void { startFlight(this); }
   flightShoot(): void { flightShoot(this); }
+  castPuff(): void { castPuff(this); }
+
+  /** Bumping the Power Box grants this level's elemental power. */
+  grantPower(): void {
+    const pb = this.powerBox; if (!pb || pb.used) return;
+    pb.used = true; this.powerActive = true;
+    this.audio.sBox(); this.audio.sStar(); this.spawnFx(pb.group.position, 0xffd27f, 14);
+    this.stage.scene.remove(pb.group);
+    this.ui.setPuffVisible(true);
+  }
 
   // ---- HUD / dots ----
   updateHUD(): void { this.ui.setHUD(this.smallStars, this.boxesFound); }
@@ -281,6 +302,7 @@ export class Game {
       // ground height: vertical levels have a tiny base only near the middle; horizontal use groundAt
       let groundTop: number;
       if (this.levelType === 'vertical') { groundTop = (Math.abs(this.charPos.x) <= 10) ? GROUND_Y + CHAR_R : -999; }
+      else if (this.gaps.length > 0 && this.gaps.some(g => this.charPos.x >= g.x0 && this.charPos.x <= g.x1)) { groundTop = -Infinity; }
       else { groundTop = this.groundAt(this.charPos.x) + CHAR_R; }
       let landed = false; const footY = groundTop;
       if (this.charPos.y <= footY) { this.charPos.y = footY; if (!this.onGround) this.squash = 1.25; this.vel.y = 0; this.onGround = true; landed = true; }
@@ -300,6 +322,13 @@ export class Game {
       if (!landed && this.charPos.y > footY + 0.05) this.onGround = false;
       // vertical safety net: if you fall below the base, gently set down on the base ground (no death)
       if (this.levelType === 'vertical' && this.charPos.y < GROUND_Y - 1) { this.charPos.x += (0 - this.charPos.x) * 0.2; this.charPos.y = GROUND_Y + CHAR_R; this.vel.y = 0; this.vel.x = 0; this.onGround = true; landed = true; this.squash = 1.25; }
+      // soft-gap catch: miss a jump and the cushion below bounces you back up (no fail)
+      if (this.gaps.length > 0 && this.levelType !== 'vertical' && this.vel.y <= 0 && this.charPos.y <= this.catchY + CHAR_R && this.gaps.some(g => this.charPos.x >= g.x0 && this.charPos.x <= g.x1)) {
+        this.charPos.y = this.catchY + CHAR_R; this.vel.y = this.level.jump; this.onGround = false; this.squash = 0.6; this.audio.sBoing();
+      }
+
+      // Power Box: walk near or bump it to gain this level's elemental power (generous radius)
+      if (this.powerBox && !this.powerBox.used && Math.hypot(this.charPos.x - this.powerBox.group.position.x, this.charPos.y - this.powerBox.group.position.y) < CHAR_R + 1.4) this.grantPower();
 
       // rolling rocks: bop to pop, side-touch = gentle bump
       this.rollers.forEach(r => { if (!r.alive) return; const dx = this.charPos.x - r.mesh.position.x, dy = this.charPos.y - r.mesh.position.y; if (Math.abs(dx) < CHAR_R + 0.4 && dy < CHAR_R + 0.5 && dy > -0.2) { if (this.vel.y < 0 && this.charPos.y > r.mesh.position.y + 0.25) { r.alive = false; scene.remove(r.mesh); this.audio.sRock(); this.spawnFx(r.mesh.position, 0xc4623d, 9); const m = makeStarMesh(1, false); m.position.copy(r.mesh.position); m.position.y += 0.3; scene.add(m); this.starItems.push({ mesh: m, base: m.position.y, alive: true, reward: true, vy: 0.18 }); this.vel.y = this.level.jump * 0.7; } else { this.bumpBack(); } } });
@@ -340,6 +369,8 @@ export class Game {
 
     this.factBoxes.forEach(b => { b.bounce *= 0.85; b.group.position.y = b.baseY + (b.used ? 0 : Math.sin(clock.elapsedTime * 1.5 + b.x) * 0.06 * (this.calm ? 0.4 : 1)) + b.bounce; (b.group.userData.cube as THREE.Mesh).rotation.y += 0.005 * sp; });
 
+    if (this.powerBox && !this.powerBox.used) { const pb = this.powerBox; pb.group.position.y = pb.baseY + Math.sin(clock.elapsedTime * 1.6 + pb.x) * 0.12 * (this.calm ? 0.4 : 1); (pb.group.userData.cube as THREE.Mesh).rotation.y += 0.02 * sp; }
+
     this.enemies.forEach(e => { if (e.alive) { e.group.position.x += e.dir * 0.012 * sp * (this.calm ? 0.6 : 1); if (Math.abs(e.group.position.x - e.home) > e.range) e.dir *= -1; e.group.rotation.y = e.dir > 0 ? 0.3 : -0.3; e.group.position.y = e.baseY + Math.abs(Math.sin(clock.elapsedTime * 4 + e.home)) * 0.08 * (this.calm ? 0.4 : 1); } else { e.squish += (0.1 - e.squish) * 0.2; (e.group.userData.body as THREE.Mesh).scale.set(1.4, Math.max(0.1, e.squish), 1.4); e.group.position.y = e.baseY - 0.3; } });
 
     if (this.sunPiece) {
@@ -351,6 +382,7 @@ export class Game {
 
     // --- animate dynamic elements ---
     updateDynamics(this, sp);
+    updatePuffs(this, sp);
 
     // particle FX — faithful to the prototype, which only filters this array
     // (spawnFx particles keep life=1, so this never actually culls them).

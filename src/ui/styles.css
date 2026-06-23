@@ -25,6 +25,9 @@ canvas { display:block; }
 .ctrl-btn:active,.ctrl-btn.pressed { transform:scale(.9); background:rgba(255,255,255,.34); }
 .jump-btn { width:96px; height:96px; font-size:30px; background:linear-gradient(135deg,rgba(125,200,255,.5),rgba(95,150,255,.5)); border-color:rgba(200,235,255,.6); pointer-events:auto; flex-direction:column; line-height:1; gap:2px; }
 .jump-btn span { font-size:13px; font-weight:800; letter-spacing:.5px; }
+.right-cluster { display:flex; align-items:flex-end; gap:14px; pointer-events:none; }
+.puff-btn { display:none; width:78px; height:78px; font-size:26px; background:linear-gradient(135deg,rgba(255,170,90,.55),rgba(255,120,70,.5)); border-color:rgba(255,210,170,.65); pointer-events:auto; flex-direction:column; line-height:1; gap:2px; }
+.puff-btn span { font-size:12px; font-weight:800; letter-spacing:.5px; }
 #flightControls { display:none; }
 .dpad-vert { flex-direction:column; gap:12px; }
 .shoot-btn { width:96px; height:96px; font-size:30px; background:linear-gradient(135deg,rgba(255,150,120,.55),rgba(255,90,90,.5)); border-color:rgba(255,200,180,.65); pointer-events:auto; flex-direction:column; line-height:1; gap:2px; }

@@ -28,6 +28,8 @@ export class UI {
 
   setPlanetName(name: string): void { this.byId('planetName').textContent = name; }
 
+  setPuffVisible(on: boolean): void { const b = document.getElementById('puffBtn'); if (b) b.style.display = on ? 'flex' : 'none'; }
+
   setHUD(stars: number, boxesFound: number): void {
     this.byId('starCount').textContent = String(stars);
     this.byId('boxCount').textContent = boxesFound + '/5';
@@ -305,11 +307,13 @@ export class UI {
       sb.addEventListener('pointerdown', down); sb.addEventListener('pointerup', up); sb.addEventListener('pointerleave', up); sb.addEventListener('pointercancel', up);
     }
     this.byId('jumpBtn').addEventListener('pointerdown', e => { e.preventDefault(); audio.resume(); game.doJump(); });
+    this.byId('puffBtn').addEventListener('pointerdown', e => { e.preventDefault(); audio.resume(); game.castPuff(); });
 
     addEventListener('keydown', e => {
       if (e.repeat) return;
       if (game.mode === 'flight') { if (e.key === 'ArrowUp') game.move.up = true; if (e.key === 'ArrowDown') game.move.down = true; if (e.key === ' ') { game.flightShoot(); e.preventDefault(); } return; }
       if (e.key === 'ArrowLeft') game.move.left = true; if (e.key === 'ArrowRight') game.move.right = true; if (e.key === ' ' || e.key === 'ArrowUp') { game.doJump(); e.preventDefault(); }
+      if (e.key === 'f' || e.key === 'F') { game.castPuff(); }
     });
     addEventListener('keyup', e => { if (e.key === 'ArrowLeft') game.move.left = false; if (e.key === 'ArrowRight') game.move.right = false; if (e.key === 'ArrowUp') game.move.up = false; if (e.key === 'ArrowDown') game.move.down = false; });
 
