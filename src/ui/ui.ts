@@ -42,33 +42,57 @@ export class UI {
     });
   }
 
-  updatePlanetDots(pIndex: number): void {
+  updatePlanetDots(pIndex: number, highestUnlocked: number): void {
     document.querySelectorAll('.pdot').forEach((d, i) => {
-      d.classList.toggle('locked', i > pIndex);
+      d.classList.toggle('locked', i > highestUnlocked);
       d.classList.toggle('current', i === pIndex);
       const lock = d.querySelector('.lock') as HTMLElement | null;
-      if (lock) lock.style.display = i > pIndex ? 'block' : 'none';
+      if (lock) lock.style.display = i > highestUnlocked ? 'block' : 'none';
     });
   }
 
-  updateMenuProgress(pIndex: number): void {
+  updateMenuProgress(highestUnlocked: number): void {
     const el = document.getElementById('menuProgress'); if (!el) return;
-    el.textContent = pIndex > 0 ? ('🚀 Reached ' + PLANETS[pIndex]!.name) : 'A gentle space adventure';
+    el.textContent = highestUnlocked > 0 ? ('🚀 Reached ' + PLANETS[highestUnlocked]!.name) : 'A gentle space adventure';
   }
 
-  buildPlanetGrid(onSelect: (i: number) => void): void {
-    const grid = document.getElementById('planetGrid'); if (!grid) return;
-    grid.innerHTML = '';
+  // The galaxy map: a calm vertical journey from the Sun outward. Reached
+  // planets are tappable; locked ones show gently (no lock-shame), not tappable.
+  buildGalaxyMap(highestUnlocked: number, current: number, onSelect: (i: number) => void): void {
+    const map = document.getElementById('galaxyMap'); if (!map) return;
+    map.innerHTML = '';
+
+    const sun = document.createElement('div'); sun.className = 'galaxy-sun';
+    const orb = document.createElement('span'); orb.className = 'gs-orb'; orb.textContent = '☀️';
+    const sunLabel = document.createElement('span'); sunLabel.textContent = 'The Sun';
+    sun.appendChild(orb); sun.appendChild(sunLabel); map.appendChild(sun);
+
     PLANETS.forEach((P, i) => {
-      const tile = document.createElement('button'); tile.className = 'planet-tile';
-      const dot = document.createElement('span'); dot.className = 'pt-dot'; dot.style.background = '#' + P.sky[1].toString(16).padStart(6, '0');
-      const txt = document.createElement('div');
-      const nm = document.createElement('div'); nm.className = 'pt-name'; nm.textContent = P.emoji + ' ' + P.name;
-      const ty = document.createElement('div'); ty.className = 'pt-type'; ty.textContent = (P.terrain && P.terrain.type === 'vertical') ? 'Climb up ↑' : 'Side adventure →';
-      txt.appendChild(nm); txt.appendChild(ty);
-      tile.appendChild(dot); tile.appendChild(txt);
-      tile.addEventListener('click', () => { onSelect(i); });
-      grid.appendChild(tile);
+      const unlocked = i <= highestUnlocked;
+      const isCurrent = i === current;
+      const node = document.createElement('button'); node.className = 'galaxy-node';
+      if (isCurrent) node.classList.add('current');
+      if (unlocked) node.classList.add('reached'); else node.classList.add('locked');
+
+      const dot = document.createElement('span'); dot.className = 'gn-dot';
+      dot.style.background = '#' + P.sky[1].toString(16).padStart(6, '0');
+
+      const info = document.createElement('div');
+      const nm = document.createElement('div'); nm.className = 'gn-name'; nm.textContent = P.emoji + ' ' + P.name;
+      const st = document.createElement('div'); st.className = 'gn-state';
+      st.textContent = isCurrent ? 'You are here' : unlocked ? ((P.terrain && P.terrain.type === 'vertical') ? 'Climb up ↑' : 'Side adventure →') : 'Not yet';
+      info.appendChild(nm); info.appendChild(st);
+
+      node.appendChild(dot); node.appendChild(info);
+
+      if (!unlocked) {
+        const lock = document.createElement('span'); lock.className = 'gn-lock'; lock.textContent = '🔒';
+        node.appendChild(lock);
+        node.setAttribute('aria-disabled', 'true');
+      } else {
+        node.addEventListener('click', () => { onSelect(i); });
+      }
+      map.appendChild(node);
     });
   }
 
@@ -155,7 +179,7 @@ export class UI {
     this.byId('howBackBtn').addEventListener('click', () => { hide('howto'); show('menu'); });
     this.byId('settingsBtn').addEventListener('click', () => { hide('menu'); show('settings'); this.settingsReturn = 'menu'; });
     this.byId('setBackBtn').addEventListener('click', () => { hide('settings'); show(this.settingsReturn); });
-    this.byId('selectBtn').addEventListener('click', () => { this.buildPlanetGrid(i => game.goToPlanet(i)); hide('menu'); show('select'); });
+    this.byId('selectBtn').addEventListener('click', () => { this.buildGalaxyMap(game.storage.highestUnlocked, game.pIndex, i => game.goToPlanet(i)); hide('menu'); show('select'); });
     this.byId('selBackBtn').addEventListener('click', () => { hide('select'); show('menu'); });
 
     // pause
@@ -166,6 +190,6 @@ export class UI {
 
     // reflect initial setting states
     this.setSettingToggle('setReadT', audio.speakOn); this.setSettingToggle('setMusicT', audio.musicOn); this.setSettingToggle('setCalmT', game.calm);
-    this.updateMenuProgress(game.pIndex);
+    this.updateMenuProgress(game.storage.highestUnlocked);
   }
 }

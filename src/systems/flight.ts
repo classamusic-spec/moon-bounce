@@ -150,7 +150,9 @@ function endFlight(game: Game): void {
     game.stage.scene.visible = true;
     game.move.up = false; game.move.down = false; game.move.shoot = false;
     game.mode = 'platformer';
-    game.pIndex++; game.audio.pIndex = game.pIndex; game.loadLevel(game.pIndex, false); game.paused = false;
+    game.pIndex++; game.audio.pIndex = game.pIndex;
+    game.storage.unlock(game.pIndex); game.ui.updateMenuProgress(game.storage.highestUnlocked);
+    game.loadLevel(game.pIndex, false); game.paused = false;
   }, 1600);
 }
 

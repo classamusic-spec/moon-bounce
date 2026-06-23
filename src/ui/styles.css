@@ -78,12 +78,24 @@ canvas { display:block; }
 .menu-main-btn:active { transform:scale(.96); }
 .menu-row { display:flex; gap:12px; margin-top:12px; }
 .menu-wide-btn { width:100%; margin-top:12px; padding:15px; }
-.planet-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:20px; }
-.planet-tile { cursor:pointer; display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.16); border-radius:18px; padding:14px 16px; transition:transform .15s, background .2s; text-align:left; }
-.planet-tile:active { transform:scale(.95); background:rgba(255,255,255,.2); }
-.planet-tile .pt-dot { width:30px; height:30px; border-radius:50%; flex-shrink:0; box-shadow:0 0 12px rgba(255,255,255,.2) inset; }
-.planet-tile .pt-name { color:#fff; font-size:17px; font-weight:800; }
-.planet-tile .pt-type { color:#9aa6d8; font-size:12px; font-weight:600; }
+/* ===== galaxy map (level select) ===== */
+.galaxy-map { display:flex; flex-direction:column; max-height:58vh; overflow-y:auto; margin-bottom:20px; padding:4px 2px; -webkit-overflow-scrolling:touch; }
+.galaxy-sun { align-self:center; display:flex; align-items:center; gap:8px; font-size:15px; font-weight:800; color:#ffd886; text-shadow:0 0 14px rgba(255,200,90,.55); margin-bottom:4px; }
+.galaxy-sun .gs-orb { font-size:30px; line-height:1; filter:drop-shadow(0 0 12px rgba(255,200,90,.9)); animation:floaty 4s ease-in-out infinite; }
+.galaxy-node { position:relative; display:flex; align-items:center; gap:14px; width:100%; cursor:pointer; background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.16); border-radius:18px; padding:12px 16px; margin:7px 0; text-align:left; font-family:inherit; transition:transform .15s, background .2s; }
+.galaxy-node::before { content:''; position:absolute; left:32px; top:-9px; width:2px; height:9px; background:repeating-linear-gradient(to bottom, rgba(255,255,255,.45) 0 3px, transparent 3px 6px); }
+.galaxy-node:first-of-type::before { display:none; }
+.galaxy-node:active { transform:scale(.97); background:rgba(255,255,255,.2); }
+.galaxy-node .gn-dot { width:34px; height:34px; border-radius:50%; flex-shrink:0; box-shadow:0 0 12px rgba(255,255,255,.2) inset; position:relative; }
+.galaxy-node .gn-name { color:#fff; font-size:17px; font-weight:800; }
+.galaxy-node .gn-state { color:#9aa6d8; font-size:12px; font-weight:600; }
+.galaxy-node.reached .gn-state { color:#7fe0a0; }
+.galaxy-node.current { border-color:rgba(255,255,255,.6); background:rgba(255,255,255,.16); }
+.galaxy-node.current .gn-dot::after { content:''; position:absolute; inset:-5px; border-radius:50%; border:2px solid rgba(255,255,255,.85); animation:pulse 2.4s ease-in-out infinite; }
+.galaxy-node.current .gn-state { color:#ffd886; }
+.galaxy-node.locked { opacity:.45; cursor:default; }
+.galaxy-node.locked:active { transform:none; background:rgba(255,255,255,.08); }
+.galaxy-node .gn-lock { margin-left:auto; font-size:16px; }
 .menu-sec-btn { flex:1; cursor:pointer; font-family:inherit; font-weight:700; font-size:16px; color:#fff; background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.2); border-radius:999px; padding:14px 10px; transition:transform .15s, background .2s; }
 .menu-sec-btn:active { transform:scale(.95); background:rgba(255,255,255,.22); }
 .menu-foot { color:#9aa6d8; font-size:14px; font-weight:600; margin-top:18px; min-height:18px; }

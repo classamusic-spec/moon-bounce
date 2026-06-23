@@ -10,6 +10,7 @@ import { AudioSystem } from './systems/audio';
 import { Stage, loadLevel } from './systems/level';
 import { updateDynamics } from './systems/dynamics';
 import { startFlight, flightShoot, updateFlight } from './systems/flight';
+import { Storage } from './systems/storage';
 import { UI } from './ui/ui';
 
 // The Game: owns all mutable state, input, the physics step, and the main loop.
@@ -18,6 +19,7 @@ export class Game {
   readonly stage: Stage;
   readonly audio: AudioSystem;
   readonly ui: UI;
+  readonly storage: Storage;
   char!: THREE.Group;
 
   // progress / flags
@@ -79,13 +81,17 @@ export class Game {
     this.stage = new Stage(container);
     this.audio = new AudioSystem();
     this.ui = new UI();
+    this.storage = new Storage();
   }
 
   init(): void {
     this.char = makeCharacter();
     this.stage.scene.add(this.char);
     this.ui.buildPlanetDots();
-    this.loadLevel(0, true);
+    // Resume where the player left off (defaults to Mercury on a fresh save).
+    const resume = this.storage.resumePlanet();
+    this.pIndex = resume; this.audio.pIndex = resume;
+    this.loadLevel(resume, true);
     addEventListener('resize', () => this.stage.onResize());
     this.ui.bind(this);
     this.animate();
@@ -98,7 +104,7 @@ export class Game {
 
   // ---- HUD / dots ----
   updateHUD(): void { this.ui.setHUD(this.smallStars, this.boxesFound); }
-  updatePlanetDots(): void { this.ui.updatePlanetDots(this.pIndex); }
+  updatePlanetDots(): void { this.ui.updatePlanetDots(this.pIndex, this.storage.highestUnlocked); }
 
   // ---- player actions ----
   doJump(): void {
@@ -123,7 +129,7 @@ export class Game {
     this.ui.byId('select').classList.remove('show');
     this.ui.byId('menu').classList.remove('show');
     this.ui.byId('fact').classList.remove('show');
-    this.pIndex = i; this.audio.pIndex = i; this.loadLevel(i, true); this.paused = false; this.started = true;
+    this.pIndex = i; this.audio.pIndex = i; this.storage.setLastPlanet(i); this.loadLevel(i, true); this.paused = false; this.started = true;
   }
 
   // ---- rewards / interactions ----
