@@ -135,6 +135,12 @@ export class AudioSystem {
     const prev = this.speakOn; this.speakOn = true; this.speak(this.lastSpoken); this.speakOn = prev;
   }
 
+  /** Read a specific piece of text aloud on demand (e.g. a journal fact). */
+  speakText(text: string): void {
+    if (!this.ttsSupported || this.calm) return;
+    const prev = this.speakOn; this.speakOn = true; this.speak(text); this.speakOn = prev;
+  }
+
   stopSpeak(): void { this.setReplayState(false); if (this.ttsSupported) { try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } } }
 
   toggleSpeak(): void { this.speakOn = !this.speakOn; if (!this.speakOn) this.stopSpeak(); }

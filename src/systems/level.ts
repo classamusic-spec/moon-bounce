@@ -144,7 +144,7 @@ export function loadLevel(game: Game, i: number, instant: boolean): void {
     // fact boxes spread evenly up the climb (5 boxes across the whole height)
     const climb = T.climb || []; const N = climb.length;
     const boxIdx = [0.12, 0.30, 0.50, 0.70, 0.88].map(f => Math.min(N - 1, Math.max(1, Math.round(f * (N - 1)))));
-    boxIdx.forEach((k, idx) => { const c = climb[k]!; const g = makeFactBox(); const bx = c[0] + (idx % 2 ? 2.0 : -2.0); const by = GROUND_Y + c[1] + 1.6; g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, bounce: 0 }); });
+    boxIdx.forEach((k, idx) => { const c = climb[k]!; const g = makeFactBox(); const bx = c[0] + (idx % 2 ? 2.0 : -2.0); const by = GROUND_Y + c[1] + 1.6; g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, factIndex: idx, bounce: 0 }); });
 
     // enemies on ledges spread up the climb
     [0.18, 0.40, 0.62, 0.82].map(f => Math.min(N - 1, Math.max(1, Math.round(f * (N - 1))))).forEach(k => { const c = climb[k]!; const g = makeEnemy(P.enemy); g.position.set(c[0], GROUND_Y + c[1] + 0.5, 0); scene.add(g); game.enemies.push({ group: g, baseY: GROUND_Y + c[1] + 0.5, dir: Math.random() < 0.5 ? -1 : 1, range: 1.2, home: c[0], alive: true, squish: 1, onPlat: c[0] }); });
@@ -172,7 +172,7 @@ export function loadLevel(game: Game, i: number, instant: boolean): void {
     [-42, -39, -36, -33, -30, -27, -24, -21, -18, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42].forEach((sx, idx) => { const high = idx % 3 === 0; const gy = groundAt(sx); const sy = gy + (high ? 2.6 : 1.1) + Math.random() * 0.9; const m = makeStarMesh(1, false); m.position.set(sx, sy, 0); m.userData.bob = Math.random() * Math.PI * 2; scene.add(m); game.starItems.push({ mesh: m, base: sy, alive: true }); });
 
     // fact boxes above ground
-    [-34, -17, 0, 17, 34].forEach((bx, idx) => { const by = groundAt(bx) + 2.5; const g = makeFactBox(); g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, bounce: 0 }); });
+    [-34, -17, 0, 17, 34].forEach((bx, idx) => { const by = groundAt(bx) + 2.5; const g = makeFactBox(); g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, factIndex: idx, bounce: 0 }); });
 
     // enemies on ground
     [-38, -24, -10, 6, 22, 38].forEach(ex => { const ey = groundAt(ex) + 0.5; const g = makeEnemy(P.enemy); g.position.set(ex, ey, 0); scene.add(g); game.enemies.push({ group: g, baseY: ey, dir: Math.random() < 0.5 ? -1 : 1, range: 2.0, home: ex, alive: true, squish: 1 }); });

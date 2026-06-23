@@ -149,6 +149,7 @@ export class Game {
   popBox(b: FactBox): void {
     if (b.used) return; b.used = true; b.bounce = 0.2; this.boxesFound++; this.updateHUD(); this.audio.sBox(); this.spawnFx(b.group.position, 0xfff0a0, 8);
     (b.group.userData.mat as THREE.MeshStandardMaterial).emissiveIntensity = 0.12; (b.group.userData.mat as THREE.MeshStandardMaterial).color.setHex(0xb9905a);
+    this.storage.markFact(this.pIndex, b.factIndex); // record in the Space Journal (+ award stickers)
     this.factQueue = 'box';
     this.ui.prepBoxFact(PLANETS[this.pIndex]!.name, b.fact, !this.audio.ttsSupported || this.calm);
     this.paused = true; setTimeout(() => this.ui.showFact(), 250); this.audio.speak(b.fact);

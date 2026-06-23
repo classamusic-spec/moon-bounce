@@ -105,6 +105,7 @@ export interface FactBox {
   baseY: number;
   used: boolean;
   fact: string;
+  factIndex: number;
   bounce: number;
 }
 

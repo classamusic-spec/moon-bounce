@@ -1,5 +1,6 @@
 import { PLANETS } from '../data/planets';
 import { FLIGHT_SECONDS } from '../core/constants';
+import { planetStickerId, SOLAR_STICKER } from '../systems/storage';
 import type { Game } from '../main_game';
 
 // All DOM / HUD / menu wiring. View methods plus a single bind(game) that
@@ -96,6 +97,63 @@ export class UI {
     });
   }
 
+  // The Space Journal: a sticker shelf + per-planet fact lists. Found facts are
+  // shown and replayable; unfound facts stay a gentle mystery (no spoilers).
+  buildJournal(game: Game): void {
+    const storage = game.storage;
+
+    const shelf = document.getElementById('stickerShelf');
+    if (shelf) {
+      shelf.innerHTML = '';
+      PLANETS.forEach((P, i) => {
+        const s = document.createElement('div');
+        const earned = storage.hasSticker(planetStickerId(i));
+        s.className = 'sticker ' + (earned ? 'earned' : 'locked');
+        s.textContent = earned ? P.emoji : '·';
+        s.title = earned ? P.name + ' — all facts found!' : P.name + ' — find all 5 facts';
+        shelf.appendChild(s);
+      });
+      const fin = document.createElement('div');
+      const finEarned = storage.hasSticker(SOLAR_STICKER);
+      fin.className = 'sticker sticker-final ' + (finEarned ? 'earned' : 'locked');
+      fin.textContent = finEarned ? '🌟' : '·';
+      fin.title = finEarned ? 'Solar System Explorer — every fact found!' : 'Find every fact on every planet';
+      shelf.appendChild(fin);
+    }
+
+    const list = document.getElementById('journalList');
+    if (!list) return;
+    list.innerHTML = '';
+    PLANETS.forEach((P, i) => {
+      const found = storage.factsFor(i);
+      const count = found.filter(Boolean).length;
+      const card = document.createElement('div'); card.className = 'journal-planet';
+
+      const head = document.createElement('div'); head.className = 'jp-head';
+      const dot = document.createElement('span'); dot.className = 'jp-dot'; dot.style.background = '#' + P.sky[1].toString(16).padStart(6, '0');
+      const name = document.createElement('span'); name.className = 'jp-name'; name.textContent = P.emoji + ' ' + P.name;
+      const badge = document.createElement('span'); badge.className = 'jp-count' + (count >= 5 ? ' done' : ''); badge.textContent = count >= 5 ? '★ ' + count + '/5' : count + '/5';
+      head.appendChild(dot); head.appendChild(name); head.appendChild(badge);
+      card.appendChild(head);
+
+      P.facts.forEach((factText, f) => {
+        const row = document.createElement('div');
+        const isFound = found[f] === true;
+        row.className = 'fact-row' + (isFound ? '' : ' unfound');
+        const txt = document.createElement('span'); txt.className = 'fact-text';
+        txt.textContent = isFound ? factText : '❓ Keep exploring to find this fact!';
+        row.appendChild(txt);
+        if (isFound && game.audio.ttsSupported) {
+          const btn = document.createElement('button'); btn.className = 'fact-speak'; btn.textContent = '🔊'; btn.setAttribute('aria-label', 'Hear it again');
+          btn.addEventListener('click', () => game.audio.speakText(factText));
+          row.appendChild(btn);
+        }
+        card.appendChild(row);
+      });
+      list.appendChild(card);
+    });
+  }
+
   // ---- fact card ----
   prepBoxFact(planetName: string, fact: string, replayHidden: boolean): void {
     const c = this.byId('factCard'); c.classList.add('factbox');
@@ -181,6 +239,8 @@ export class UI {
     this.byId('setBackBtn').addEventListener('click', () => { hide('settings'); show(this.settingsReturn); });
     this.byId('selectBtn').addEventListener('click', () => { this.buildGalaxyMap(game.storage.highestUnlocked, game.pIndex, i => game.goToPlanet(i)); hide('menu'); show('select'); });
     this.byId('selBackBtn').addEventListener('click', () => { hide('select'); show('menu'); });
+    this.byId('journalBtn').addEventListener('click', () => { this.buildJournal(game); hide('menu'); show('journal'); });
+    this.byId('journalBackBtn').addEventListener('click', () => { game.audio.stopSpeak(); hide('journal'); show('menu'); });
 
     // pause
     this.byId('menuBtn').addEventListener('click', () => { if (game.started && game.mode === 'platformer' && !game.paused && !this.isFactShown()) { game.paused = true; show('pause'); } });
