@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { LEVEL_LEN, GROUND_Y, CHAR_R } from '../core/constants';
-import { PLANETS } from '../data/planets';
 import type { Planet } from '../core/types';
 import { makeStarMesh, makeFactBox, makeEnemy } from '../entities/meshes';
 import { buildDynamics } from './dynamics';
@@ -100,11 +99,12 @@ export function clearLevel(game: Game): void {
   while (mid.children.length) mid.remove(mid.children[0]!);
 }
 
-export function loadLevel(game: Game, i: number, instant: boolean): void {
+// Build a level from a level definition (a Planet or a Moon — same shape).
+export function loadLevel(game: Game, P: Planet, instant: boolean): void {
   clearLevel(game);
+  game.level = P;
   const stage = game.stage;
   const scene = stage.scene;
-  const P: Planet = PLANETS[i]!;
   const T = P.terrain || { type: 'horizontal' as const };
   game.levelType = T.type || 'horizontal';
   game.levelHeight = T.height || 34;

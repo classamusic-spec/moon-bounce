@@ -96,6 +96,17 @@ canvas { display:block; }
 .galaxy-node.locked { opacity:.45; cursor:default; }
 .galaxy-node.locked:active { transform:none; background:rgba(255,255,255,.08); }
 .galaxy-node .gn-lock { margin-left:auto; font-size:16px; }
+.galaxy-moon { position:relative; display:flex; align-items:center; gap:12px; width:88%; align-self:flex-end; cursor:pointer; background:rgba(180,200,255,.06); border:2px dashed rgba(180,200,255,.28); border-radius:16px; padding:9px 14px; margin:2px 0 7px; text-align:left; font-family:inherit; transition:transform .15s, background .2s; }
+.galaxy-moon::before { content:''; position:absolute; left:-14px; top:-9px; width:2px; height:14px; background:repeating-linear-gradient(to bottom, rgba(180,200,255,.4) 0 3px, transparent 3px 6px); }
+.galaxy-moon:active { transform:scale(.97); background:rgba(180,200,255,.16); }
+.galaxy-moon .gm-dot { width:28px; height:28px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:18px; background:rgba(255,255,255,.08); }
+.galaxy-moon .gm-name { color:#dfe4ff; font-size:15px; font-weight:800; }
+.galaxy-moon .gm-state { color:#9aa6d8; font-size:11px; font-weight:600; }
+.galaxy-moon.done { border-style:solid; border-color:rgba(255,220,130,.5); background:rgba(255,220,130,.1); }
+.galaxy-moon.done .gm-state { color:#ffd886; }
+.galaxy-moon .gm-check { margin-left:auto; font-size:16px; }
+.galaxy-moon.locked { opacity:.4; cursor:default; }
+.galaxy-moon.locked:active { transform:none; background:rgba(180,200,255,.06); }
 .menu-sec-btn { flex:1; cursor:pointer; font-family:inherit; font-weight:700; font-size:16px; color:#fff; background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.2); border-radius:999px; padding:14px 10px; transition:transform .15s, background .2s; }
 .menu-sec-btn:active { transform:scale(.95); background:rgba(255,255,255,.22); }
 .menu-foot { color:#9aa6d8; font-size:14px; font-weight:600; margin-top:18px; min-height:18px; }

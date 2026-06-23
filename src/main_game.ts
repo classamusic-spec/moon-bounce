@@ -7,6 +7,8 @@ import type {
 } from './core/types';
 import { makeCharacter, makeStarMesh, applyBlobCosmetics } from './entities/meshes';
 import { colorById, hatById } from './data/cosmetics';
+import type { Planet } from './core/types';
+import type { Moon } from './data/moons';
 import { AudioSystem } from './systems/audio';
 import { Stage, loadLevel } from './systems/level';
 import { updateDynamics } from './systems/dynamics';
@@ -32,6 +34,12 @@ export class Game {
   paused = false;
   mode: Mode = 'platformer';
   flight: Flight | null = null;
+
+  // The currently loaded level definition (a planet or a moon). Physics reads
+  // this rather than PLANETS[pIndex], so moon bonus levels just plug in.
+  level: Planet = PLANETS[0]!;
+  onMoon = false;
+  currentMoon: Moon | null = null;
 
   // character physics
   charPos = { x: 0, y: 0 };
@@ -75,7 +83,7 @@ export class Game {
   // input
   move = { left: false, right: false, up: false, down: false, shoot: false };
   hitCooldown = 0;
-  factQueue: 'box' | 'sun' | null = null;
+  factQueue: 'box' | 'sun' | 'moon' | null = null;
   bonusShown = false;
 
   constructor(container: HTMLElement) {
@@ -100,7 +108,8 @@ export class Game {
   }
 
   // ---- system wrappers ----
-  loadLevel(i: number, instant: boolean): void { loadLevel(this, i, instant); }
+  loadLevel(i: number, instant: boolean): void { this.onMoon = false; this.currentMoon = null; loadLevel(this, PLANETS[i]!, instant); }
+  loadMoon(moon: Moon): void { this.onMoon = true; this.currentMoon = moon; loadLevel(this, moon, true); }
   startFlight(): void { startFlight(this); }
   flightShoot(): void { flightShoot(this); }
 
@@ -111,7 +120,7 @@ export class Game {
   // ---- player actions ----
   doJump(): void {
     if (this.paused || !this.started) return;
-    if (this.onGround) { this.vel.y = PLANETS[this.pIndex]!.jump; this.onGround = false; this.squash = 0.7; this.audio.sJump(); }
+    if (this.onGround) { this.vel.y = this.level.jump; this.onGround = false; this.squash = 0.7; this.audio.sJump(); }
   }
 
   toggleCalm(): void { this.calm = !this.calm; this.audio.calm = this.calm; if (this.calm) this.audio.stopSpeak(); }
@@ -139,6 +148,24 @@ export class Game {
     this.pIndex = i; this.audio.pIndex = i; this.storage.setLastPlanet(i); this.loadLevel(i, true); this.paused = false; this.started = true;
   }
 
+  /** Enter a moon bonus level (parent planet must be unlocked). */
+  goToMoon(moon: Moon): void {
+    this.audio.resume();
+    this.pIndex = moon.parent; this.audio.pIndex = moon.parent;
+    this.ui.byId('select').classList.remove('show');
+    this.ui.byId('menu').classList.remove('show');
+    this.loadMoon(moon); this.paused = false; this.started = true;
+  }
+
+  /** Leave a moon: drop back to its parent planet and reopen the Galaxy Map. */
+  exitMoon(): void {
+    const parent = this.currentMoon ? this.currentMoon.parent : this.pIndex;
+    this.pIndex = parent; this.audio.pIndex = parent;
+    this.loadLevel(parent, true); this.paused = false;
+    this.ui.buildGalaxyMap(this, i => this.goToPlanet(i), m => this.goToMoon(m));
+    this.ui.byId('select').classList.add('show');
+  }
+
   // ---- rewards / interactions ----
   collectStar(s: StarItem): void {
     s.alive = false; this.audio.sStar(); this.spawnFx(s.mesh.position, 0xffe9a8); this.stage.scene.remove(s.mesh); this.smallStars++; this.storage.addStars(1); this.updateHUD();
@@ -156,9 +183,9 @@ export class Game {
   popBox(b: FactBox): void {
     if (b.used) return; b.used = true; b.bounce = 0.2; this.boxesFound++; this.updateHUD(); this.audio.sBox(); this.spawnFx(b.group.position, 0xfff0a0, 8);
     (b.group.userData.mat as THREE.MeshStandardMaterial).emissiveIntensity = 0.12; (b.group.userData.mat as THREE.MeshStandardMaterial).color.setHex(0xb9905a);
-    this.storage.markFact(this.pIndex, b.factIndex); // record in the Space Journal (+ award stickers)
+    if (!this.onMoon) this.storage.markFact(this.pIndex, b.factIndex); // record in the Space Journal (moon facts aren't journaled)
     this.factQueue = 'box';
-    this.ui.prepBoxFact(PLANETS[this.pIndex]!.name, b.fact, !this.audio.ttsSupported || this.calm);
+    this.ui.prepBoxFact(this.level.name, b.fact, !this.audio.ttsSupported || this.calm);
     this.paused = true; setTimeout(() => this.ui.showFact(), 250); this.audio.speak(b.fact);
   }
 
@@ -180,6 +207,7 @@ export class Game {
 
   reachSun(): void {
     if (this.paused) return; this.paused = true; this.audio.sSun(); this.spawnFx(this.sunPiece!.group.position, 0xffd24d, 16);
+    if (this.onMoon) { this.reachMoonGoal(); return; }
     this.factQueue = 'sun'; this.ui.byId('factCard').classList.remove('factbox');
     if (this.pIndex >= PLANETS.length - 1) {
       setTimeout(() => this.ui.showWin(), 700);
@@ -192,9 +220,20 @@ export class Game {
     this.audio.speak('You found a Piece of the Sun! Next planet: ' + nxt.name + '. ' + nxt.fact);
   }
 
+  /** Reached the treasure at the end of a moon bonus level. */
+  reachMoonGoal(): void {
+    const moon = this.currentMoon!;
+    this.storage.awardSticker(moon.sticker);
+    this.factQueue = 'moon';
+    this.ui.prepMoonFact(moon, !this.audio.ttsSupported || this.calm);
+    setTimeout(() => this.ui.showFact(), 650);
+    this.audio.speak('You explored ' + moon.name + '! ' + moon.fact);
+  }
+
   onFactBtn(): void {
     this.audio.stopSpeak(); this.ui.hideFact();
     if (this.factQueue === 'sun') { this.startFlight(); }
+    else if (this.factQueue === 'moon') { this.exitMoon(); }
     else { this.paused = false; if (this.factQueue === 'box' && this.boxesFound >= 5) setTimeout(() => this.showBonus(), 200); }
     this.factQueue = null;
   }
@@ -228,7 +267,7 @@ export class Game {
       if (this.gustState.strength) { this.gustState.timer++; const ph = Math.sin(this.gustState.timer / (this.gustState.period || 240) * Math.PI * 2); this.gustState.active = ph; const g = ph * this.gustState.strength * (this.calm ? 0.5 : 1); if (dir > 0) { targetVx = Math.max(0.02, targetVx + g); } else if (dir < 0) { targetVx += g; } else { targetVx += g * 0.6; } }
 
       // --- Mercury solar boost: brief speed shimmer ---
-      if (PLANETS[this.pIndex]!.dyn && PLANETS[this.pIndex]!.dyn!.boost) { this.boostTimer++; if (this.boostTimer % 420 < 60) { targetVx *= 1.35; } }
+      if (this.level.dyn && this.level.dyn!.boost) { this.boostTimer++; if (this.boostTimer % 420 < 60) { targetVx *= 1.35; } }
 
       if (this.hitCooldown < 30) {
         if (onIce) { this.charSlide += (targetVx - this.charSlide) * 0.04; this.vel.x = this.charSlide; } // slippery: slow to change
@@ -237,7 +276,7 @@ export class Game {
         if (dir !== 0) this.facing = dir;
       }
       this.charPos.x += this.vel.x; this.charPos.x = Math.max(this.levelMinX, Math.min(this.levelMaxX, this.charPos.x));
-      this.vel.y -= PLANETS[this.pIndex]!.grav * (this.calm ? 0.7 : 1); this.charPos.y += this.vel.y * (this.calm ? 0.7 : 1);
+      this.vel.y -= this.level.grav * (this.calm ? 0.7 : 1); this.charPos.y += this.vel.y * (this.calm ? 0.7 : 1);
 
       // ground height: vertical levels have a tiny base only near the middle; horizontal use groundAt
       let groundTop: number;
@@ -253,19 +292,19 @@ export class Game {
       this.factBoxes.forEach(b => { if (Math.abs(this.charPos.x - b.x) < 0.5 + CHAR_R * 0.6) { const top = b.baseY + 0.5 + CHAR_R; if (this.vel.y <= 0 && this.charPos.y <= top && this.charPos.y > top - 0.5) { this.charPos.y = top; this.vel.y = 0; this.onGround = true; landed = true; if (!b.used) this.popBox(b); } const bottom = b.baseY - 0.5 - CHAR_R; if (this.vel.y > 0 && this.charPos.y >= bottom && this.charPos.y < bottom + 0.5) { if (!b.used) this.popBox(b); this.vel.y = -0.05; } } });
 
       // bounce pads / geysers: launch high
-      this.bouncePads.forEach(bp => { if (Math.abs(this.charPos.x - bp.x) < 1.0 && this.charPos.y <= bp.y + CHAR_R + 0.4 && this.vel.y <= 0.05) { this.vel.y = PLANETS[this.pIndex]!.jump * bp.power + 0.2; this.onGround = false; this.squash = 0.6; this.audio.sBoing(); } });
+      this.bouncePads.forEach(bp => { if (Math.abs(this.charPos.x - bp.x) < 1.0 && this.charPos.y <= bp.y + CHAR_R + 0.4 && this.vel.y <= 0.05) { this.vel.y = this.level.jump * bp.power + 0.2; this.onGround = false; this.squash = 0.6; this.audio.sBoing(); } });
 
       // bubbles: gentle upward bob when touched
-      this.bubbles.forEach(bb => { if (Math.hypot(this.charPos.x - bb.mesh.position.x, this.charPos.y - bb.mesh.position.y) < CHAR_R + 0.7) { if (this.vel.y < 0.1) { this.vel.y = PLANETS[this.pIndex]!.jump * 0.55; this.onGround = false; this.audio.sBoing(); this.spawnFx(bb.mesh.position, 0xbcd0ff, 5); } } });
+      this.bubbles.forEach(bb => { if (Math.hypot(this.charPos.x - bb.mesh.position.x, this.charPos.y - bb.mesh.position.y) < CHAR_R + 0.7) { if (this.vel.y < 0.1) { this.vel.y = this.level.jump * 0.55; this.onGround = false; this.audio.sBoing(); this.spawnFx(bb.mesh.position, 0xbcd0ff, 5); } } });
 
       if (!landed && this.charPos.y > footY + 0.05) this.onGround = false;
       // vertical safety net: if you fall below the base, gently set down on the base ground (no death)
       if (this.levelType === 'vertical' && this.charPos.y < GROUND_Y - 1) { this.charPos.x += (0 - this.charPos.x) * 0.2; this.charPos.y = GROUND_Y + CHAR_R; this.vel.y = 0; this.vel.x = 0; this.onGround = true; landed = true; this.squash = 1.25; }
 
       // rolling rocks: bop to pop, side-touch = gentle bump
-      this.rollers.forEach(r => { if (!r.alive) return; const dx = this.charPos.x - r.mesh.position.x, dy = this.charPos.y - r.mesh.position.y; if (Math.abs(dx) < CHAR_R + 0.4 && dy < CHAR_R + 0.5 && dy > -0.2) { if (this.vel.y < 0 && this.charPos.y > r.mesh.position.y + 0.25) { r.alive = false; scene.remove(r.mesh); this.audio.sRock(); this.spawnFx(r.mesh.position, 0xc4623d, 9); const m = makeStarMesh(1, false); m.position.copy(r.mesh.position); m.position.y += 0.3; scene.add(m); this.starItems.push({ mesh: m, base: m.position.y, alive: true, reward: true, vy: 0.18 }); this.vel.y = PLANETS[this.pIndex]!.jump * 0.7; } else { this.bumpBack(); } } });
+      this.rollers.forEach(r => { if (!r.alive) return; const dx = this.charPos.x - r.mesh.position.x, dy = this.charPos.y - r.mesh.position.y; if (Math.abs(dx) < CHAR_R + 0.4 && dy < CHAR_R + 0.5 && dy > -0.2) { if (this.vel.y < 0 && this.charPos.y > r.mesh.position.y + 0.25) { r.alive = false; scene.remove(r.mesh); this.audio.sRock(); this.spawnFx(r.mesh.position, 0xc4623d, 9); const m = makeStarMesh(1, false); m.position.copy(r.mesh.position); m.position.y += 0.3; scene.add(m); this.starItems.push({ mesh: m, base: m.position.y, alive: true, reward: true, vy: 0.18 }); this.vel.y = this.level.jump * 0.7; } else { this.bumpBack(); } } });
 
-      this.enemies.forEach(e => { if (!e.alive) return; const dx = this.charPos.x - e.group.position.x, dy = this.charPos.y - e.group.position.y; if (Math.abs(dx) < CHAR_R + 0.45 && dy < CHAR_R + 0.6 && dy > -0.2) { if (this.vel.y < 0 && this.charPos.y > e.group.position.y + 0.3) { this.squishEnemy(e); this.vel.y = PLANETS[this.pIndex]!.jump * 0.7; this.onGround = false; } else { this.bumpBack(); } } });
+      this.enemies.forEach(e => { if (!e.alive) return; const dx = this.charPos.x - e.group.position.x, dy = this.charPos.y - e.group.position.y; if (Math.abs(dx) < CHAR_R + 0.45 && dy < CHAR_R + 0.6 && dy > -0.2) { if (this.vel.y < 0 && this.charPos.y > e.group.position.y + 0.3) { this.squishEnemy(e); this.vel.y = this.level.jump * 0.7; this.onGround = false; } else { this.bumpBack(); } } });
 
       if (this.sunPiece && Math.hypot(this.charPos.x - this.sunPiece.group.position.x, this.charPos.y - this.sunPiece.group.position.y) < CHAR_R + 1.1) this.reachSun();
     }

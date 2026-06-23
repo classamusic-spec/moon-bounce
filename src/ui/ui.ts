@@ -1,4 +1,6 @@
 import { PLANETS } from '../data/planets';
+import { MOONS, moonForPlanet } from '../data/moons';
+import type { Moon } from '../data/moons';
 import { FLIGHT_SECONDS } from '../core/constants';
 import { planetStickerId, SOLAR_STICKER } from '../systems/storage';
 import type { CosmeticSlot } from '../systems/storage';
@@ -62,8 +64,11 @@ export class UI {
 
   // The galaxy map: a calm vertical journey from the Sun outward. Reached
   // planets are tappable; locked ones show gently (no lock-shame), not tappable.
-  buildGalaxyMap(highestUnlocked: number, current: number, onSelect: (i: number) => void): void {
+  // A planet with a moon gets a small moon bonus node beneath it.
+  buildGalaxyMap(game: Game, onSelect: (i: number) => void, onMoonSelect: (m: Moon) => void): void {
     const map = document.getElementById('galaxyMap'); if (!map) return;
+    const highestUnlocked = game.storage.highestUnlocked;
+    const current = game.pIndex;
     map.innerHTML = '';
 
     const sun = document.createElement('div'); sun.className = 'galaxy-sun';
@@ -73,7 +78,7 @@ export class UI {
 
     PLANETS.forEach((P, i) => {
       const unlocked = i <= highestUnlocked;
-      const isCurrent = i === current;
+      const isCurrent = i === current && !game.onMoon;
       const node = document.createElement('button'); node.className = 'galaxy-node';
       if (isCurrent) node.classList.add('current');
       if (unlocked) node.classList.add('reached'); else node.classList.add('locked');
@@ -97,6 +102,26 @@ export class UI {
         node.addEventListener('click', () => { onSelect(i); });
       }
       map.appendChild(node);
+
+      // moon bonus node
+      const moon = moonForPlanet(i);
+      if (moon) {
+        const done = game.storage.hasSticker(moon.sticker);
+        const mnode = document.createElement('button'); mnode.className = 'galaxy-moon';
+        if (unlocked) mnode.classList.add('reached'); else mnode.classList.add('locked');
+        if (done) mnode.classList.add('done');
+        const mdot = document.createElement('span'); mdot.className = 'gm-dot'; mdot.textContent = moon.emoji;
+        const minfo = document.createElement('div');
+        const mnm = document.createElement('div'); mnm.className = 'gm-name'; mnm.textContent = moon.name;
+        const mst = document.createElement('div'); mst.className = 'gm-state';
+        mst.textContent = !unlocked ? 'Bonus — unlock the planet' : done ? 'Bonus ✓ explored' : 'Bonus level →';
+        minfo.appendChild(mnm); minfo.appendChild(mst);
+        mnode.appendChild(mdot); mnode.appendChild(minfo);
+        if (done) { const c = document.createElement('span'); c.className = 'gm-check'; c.textContent = '🏅'; mnode.appendChild(c); }
+        if (unlocked) mnode.addEventListener('click', () => onMoonSelect(moon));
+        else mnode.setAttribute('aria-disabled', 'true');
+        map.appendChild(mnode);
+      }
     });
   }
 
@@ -114,6 +139,14 @@ export class UI {
         s.className = 'sticker ' + (earned ? 'earned' : 'locked');
         s.textContent = earned ? P.emoji : '·';
         s.title = earned ? P.name + ' — all facts found!' : P.name + ' — find all 5 facts';
+        shelf.appendChild(s);
+      });
+      MOONS.forEach(m => {
+        const s = document.createElement('div');
+        const earned = storage.hasSticker(m.sticker);
+        s.className = 'sticker ' + (earned ? 'earned' : 'locked');
+        s.textContent = earned ? m.emoji : '·';
+        s.title = earned ? m.name + ' — bonus explored!' : m.name + ' — explore the moon bonus';
         shelf.appendChild(s);
       });
       const fin = document.createElement('div');
@@ -227,6 +260,16 @@ export class UI {
     this.byId('replayBtn').classList.toggle('hidden', replayHidden);
   }
 
+  prepMoonFact(moon: Moon, replayHidden: boolean): void {
+    const c = this.byId('factCard'); c.classList.remove('factbox');
+    this.byId('factEmoji').textContent = moon.emoji;
+    this.byId('factKicker').textContent = 'Bonus complete! ⭐';
+    this.byId('factTitle').textContent = 'You explored ' + moon.name + '!';
+    this.byId('factBody').textContent = moon.fact;
+    this.byId('factBtn').textContent = 'Back to map 🗺️';
+    this.byId('replayBtn').classList.toggle('hidden', replayHidden);
+  }
+
   showFact(): void { this.byId('fact').classList.add('show'); }
   hideFact(): void { this.byId('fact').classList.remove('show'); }
   isFactShown(): boolean { return this.byId('fact').classList.contains('show'); }
@@ -289,7 +332,7 @@ export class UI {
     this.byId('howBackBtn').addEventListener('click', () => { hide('howto'); show('menu'); });
     this.byId('settingsBtn').addEventListener('click', () => { hide('menu'); show('settings'); this.settingsReturn = 'menu'; });
     this.byId('setBackBtn').addEventListener('click', () => { hide('settings'); show(this.settingsReturn); });
-    this.byId('selectBtn').addEventListener('click', () => { this.buildGalaxyMap(game.storage.highestUnlocked, game.pIndex, i => game.goToPlanet(i)); hide('menu'); show('select'); });
+    this.byId('selectBtn').addEventListener('click', () => { this.buildGalaxyMap(game, i => game.goToPlanet(i), m => game.goToMoon(m)); hide('menu'); show('select'); });
     this.byId('selBackBtn').addEventListener('click', () => { hide('select'); show('menu'); });
     this.byId('journalBtn').addEventListener('click', () => { this.buildJournal(game); hide('menu'); show('journal'); });
     this.byId('journalBackBtn').addEventListener('click', () => { game.audio.stopSpeak(); hide('journal'); show('menu'); });

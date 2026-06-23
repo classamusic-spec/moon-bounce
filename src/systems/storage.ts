@@ -156,6 +156,8 @@ export class Storage {
   // ---- Sticker book ----
   stickers(): string[] { return this.data.stickers.slice(); }
   hasSticker(id: string): boolean { return this.data.stickers.includes(id); }
+  /** Grant a sticker directly (e.g. completing a moon bonus level). */
+  awardSticker(id: string): void { if (!this.data.stickers.includes(id)) { this.data.stickers.push(id); this.persist(); } }
 
   // ---- Stars & cosmetics (Dress Up) ----
   get stars(): number { return this.data.starsBank; }
