@@ -15,7 +15,7 @@ import { AudioSystem } from './systems/audio';
 import { Stage, loadLevel } from './systems/level';
 import { updateDynamics } from './systems/dynamics';
 import { startFlight, flightShoot, updateFlight } from './systems/flight';
-import { Storage } from './systems/storage';
+import { Storage, masterStickerId } from './systems/storage';
 import { UI } from './ui/ui';
 
 // The Game: owns all mutable state, input, the physics step, and the main loop.
@@ -190,7 +190,17 @@ export class Game {
 
   // ---- rewards / interactions ----
   collectStar(s: StarItem): void {
+    if (s.cache) { this.collectCache(s); return; }
     s.alive = false; this.audio.sStar(); this.spawnFx(s.mesh.position, 0xffe9a8); this.stage.scene.remove(s.mesh); this.smallStars++; this.storage.addStars(1); this.updateHUD();
+  }
+
+  /** Found a secret power cache: bonus stars + a Power-Master sticker. */
+  collectCache(s: StarItem): void {
+    s.alive = false; this.stage.scene.remove(s.mesh);
+    this.audio.sSun(); this.spawnFx(s.mesh.position, 0xffd24d, 16);
+    const bonus = 8; this.smallStars += bonus; this.storage.addStars(bonus); this.updateHUD();
+    if (!this.onMoon) this.storage.awardSticker(masterStickerId(this.pIndex));
+    this.ui.showToast('⭐', 'Power Master! +' + bonus);
   }
 
   spawnFx(pos: THREE.Vector3, color: number, n?: number): void {

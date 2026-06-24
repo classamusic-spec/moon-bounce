@@ -2,7 +2,7 @@ import { PLANETS } from '../data/planets';
 import { MOONS, moonForPlanet } from '../data/moons';
 import type { Moon } from '../data/moons';
 import { FLIGHT_SECONDS } from '../core/constants';
-import { planetStickerId, SOLAR_STICKER } from '../systems/storage';
+import { planetStickerId, masterStickerId, SOLAR_STICKER } from '../systems/storage';
 import type { CosmeticSlot } from '../systems/storage';
 import { COLORS, HATS, colorById, hatById } from '../data/cosmetics';
 import type { ColorCosmetic, HatCosmetic } from '../data/cosmetics';
@@ -151,6 +151,16 @@ export class UI {
         s.title = earned ? m.name + ' — bonus explored!' : m.name + ' — explore the moon bonus';
         shelf.appendChild(s);
       });
+      const powerEmoji: Record<string, string> = { flame: '🔥', ice: '❄️', bubble: '🫧', spark: '⚡' };
+      PLANETS.forEach((P, i) => {
+        if (!P.power) return;
+        const s = document.createElement('div');
+        const earned = storage.hasSticker(masterStickerId(i));
+        s.className = 'sticker ' + (earned ? 'earned' : 'locked');
+        s.textContent = earned ? (powerEmoji[P.power] || '⭐') : '·';
+        s.title = earned ? P.name + ' — Power Master!' : P.name + ' — find the secret power cache';
+        shelf.appendChild(s);
+      });
       const fin = document.createElement('div');
       const finEarned = storage.hasSticker(SOLAR_STICKER);
       fin.className = 'sticker sticker-final ' + (finEarned ? 'earned' : 'locked');
@@ -277,8 +287,14 @@ export class UI {
   isFactShown(): boolean { return this.byId('fact').classList.contains('show'); }
   showWin(): void { this.byId('win').classList.add('show'); }
 
-  triggerBonusToast(): void {
-    const el = this.byId('bonus'); el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  triggerBonusToast(): void { this.showToast('🎉', 'All facts found!'); }
+
+  /** A brief centered celebration toast. */
+  showToast(emoji: string, text: string): void {
+    const el = this.byId('bonus');
+    const e = el.querySelector('.b-emoji'); if (e) e.textContent = emoji;
+    const t = el.querySelector('.b-text'); if (t) t.textContent = text;
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     setTimeout(() => el.classList.remove('show'), 2500);
   }
 

@@ -92,6 +92,8 @@ export interface Planet {
   power?: PowerType;
   /** X position of the Power Box (above the ground at that x). */
   powerBox?: number;
+  /** [x, heightAboveGround] secret power cache (reachable using the power). */
+  powerCache?: [number, number];
 }
 
 // ---------- Runtime entity types ----------
@@ -110,6 +112,8 @@ export interface StarItem {
   alive: boolean;
   reward?: boolean;
   vy?: number;
+  /** A secret power cache: awards a Power-Master sticker + bonus stars. */
+  cache?: boolean;
 }
 
 export interface FactBox {

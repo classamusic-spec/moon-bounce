@@ -243,6 +243,16 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
   sg.position.set(sunX, sunY, 0); scene.add(sg);
   game.sunPiece = { group: sg, mesh: sunMesh, glow: glow, y: sunY };
 
+  // Secret power cache — a glowing reward placed where the power can reach it.
+  if (P.powerCache) {
+    const [cx, cy] = P.powerCache; const cyAbs = GROUND_Y + cy;
+    const cg = new THREE.Group();
+    cg.add(makeStarMesh(1.5, true));
+    const cglow = new THREE.Mesh(new THREE.SphereGeometry(1.1, 18, 14), new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.25 })); cg.add(cglow);
+    cg.position.set(cx, cyAbs, 0); cg.userData.bob = 0; scene.add(cg);
+    game.starItems.push({ mesh: cg, base: cyAbs, alive: true, cache: true });
+  }
+
   // place player at start
   if (game.levelType === 'vertical') { game.charPos.x = 0; game.charPos.y = GROUND_Y + CHAR_R; }
   else { game.charPos.x = game.levelMinX + 0.8; game.charPos.y = groundAt(game.charPos.x) + CHAR_R; }
