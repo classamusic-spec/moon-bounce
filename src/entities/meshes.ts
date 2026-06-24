@@ -196,10 +196,11 @@ export function makeSpout(height: number): THREE.Group {
   return g;
 }
 
-// A solid, translucent ice-block platform (what a spout becomes when frozen).
-export function makeIceBlock(width: number, depth: number): THREE.Mesh {
-  const m = new THREE.MeshStandardMaterial({ color: 0xd6f0ff, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.85, emissive: 0x88bbdd, emissiveIntensity: 0.25, flatShading: true });
-  return new THREE.Mesh(new THREE.BoxGeometry(width, depth, 2.4), m);
+// A solid, translucent platform that a spout/cloud becomes when puffed
+// (tinted per element: ice = pale blue, bubble = blue, spark = warm).
+export function makeSolidPlat(width: number, tint: number): THREE.Mesh {
+  const m = new THREE.MeshStandardMaterial({ color: tint, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.85, emissive: tint, emissiveIntensity: 0.25, flatShading: true });
+  return new THREE.Mesh(new THREE.BoxGeometry(width, 0.5, 2.4), m);
 }
 
 export function makeBush(): THREE.Group {

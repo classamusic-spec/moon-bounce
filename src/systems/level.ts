@@ -98,7 +98,7 @@ export function clearLevel(game: Game): void {
   game.windZones = [];
   game.gaps = [];
   game.puffs.forEach(p => s.remove(p.mesh)); game.puffs = []; game.puffCd = 0;
-  game.freezables.forEach(f => { if (!f.frozen) s.remove(f.jet); }); game.freezables = [];
+  game.freezables.forEach(f => { if (!f.frozen) s.remove(f.mesh); }); game.freezables = [];
   if (game.powerBox) { s.remove(game.powerBox.group); game.powerBox = null; }
   if (game.windParticles) { s.remove(game.windParticles); game.windParticles = null; }
   if (game.sunPiece) { s.remove(game.sunPiece.group); game.sunPiece = null; }

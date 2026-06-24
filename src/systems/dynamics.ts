@@ -51,8 +51,10 @@ export function buildDynamics(game: Game, P: Planet): void {
   }
   if (d.bubbles) { d.bubbles.forEach(bx => { const m = makeBubble(); m.position.set(bx, GROUND_Y + 1.6, 0); scene.add(m); game.bubbles.push({ mesh: m, x: bx, y: GROUND_Y + 1.6, phase: Math.random() * 6 }); }); }
 
-  // freezable spouts (ice power): puff them to make a solid ice platform/bridge
-  if (d.freezeSpots) { d.freezeSpots.forEach(([x, h]) => { const sp = makeSpout(h); sp.position.set(x, GROUND_Y, 0); scene.add(sp); game.freezables.push({ jet: sp, x, height: h, w: 3.2, frozen: false }); }); }
+  // freezable ground spouts (ice/bubble): puff into a solid platform/bridge
+  if (d.freezeSpots) { d.freezeSpots.forEach(([x, h]) => { const sp = makeSpout(h); sp.position.set(x, GROUND_Y, 0); scene.add(sp); game.freezables.push({ mesh: sp, x, y: GROUND_Y + h, w: 3.2, frozen: false }); }); }
+  // floating spark clouds (vertical climbs): spark into a solid step
+  if (d.sparkClouds) { d.sparkClouds.forEach(([x, y]) => { const c = makeCloud(0xe8e0ff); c.position.set(x, GROUND_Y + y, 0); scene.add(c); game.freezables.push({ mesh: c, x, y: GROUND_Y + y, w: 3.0, frozen: false }); }); }
 }
 
 export function updateDynamics(game: Game, sp: number): void {
@@ -62,7 +64,7 @@ export function updateDynamics(game: Game, sp: number): void {
   game.movers.forEach(mv => { const t = clock.elapsedTime; const amp = mv.amp || 0.5; mv.mesh.position.y = mv.baseY + Math.sin(t * 0.7 + mv.phase) * amp * (calm ? 0.4 : 1); if (mv.drift) { mv.mesh.position.x = mv.x + Math.sin(t * 0.3 + mv.phase) * 2.0; } mv.mesh.rotation.y += 0.003 * sp; });
   game.rollers.forEach(r => { if (!r.alive) return; r.mesh.position.x += r.dir * 0.025 * sp * (calm ? 0.5 : 1); if (Math.abs(r.mesh.position.x - r.home) > r.range) r.dir *= -1; if (r.mesh.userData.rock) r.mesh.userData.rock.rotation.z -= r.dir * 0.06 * sp; });
   game.bubbles.forEach(bb => { bb.mesh.position.y = bb.y + Math.sin(clock.elapsedTime * 1.2 + bb.phase) * 0.3 * (calm ? 0.4 : 1); bb.mesh.userData.b.scale.setScalar(1 + Math.sin(clock.elapsedTime * 2 + bb.phase) * 0.06); });
-  game.freezables.forEach(f => { if (f.frozen) return; const jet = f.jet.userData.jet as THREE.Mesh | undefined; if (jet) { jet.scale.y = 1 + Math.sin(clock.elapsedTime * 4 + f.x) * 0.12 * (calm ? 0.4 : 1); (jet.material as THREE.MeshStandardMaterial).opacity = 0.4 + Math.abs(Math.sin(clock.elapsedTime * 3 + f.x)) * 0.25; } });
+  game.freezables.forEach(f => { if (f.frozen) return; const jet = f.mesh.userData.jet as THREE.Mesh | undefined; if (jet) { jet.scale.y = 1 + Math.sin(clock.elapsedTime * 4 + f.x) * 0.12 * (calm ? 0.4 : 1); (jet.material as THREE.MeshStandardMaterial).opacity = 0.4 + Math.abs(Math.sin(clock.elapsedTime * 3 + f.x)) * 0.25; } else { f.mesh.position.y = f.y + Math.sin(clock.elapsedTime * 1.1 + f.x) * 0.18 * (calm ? 0.4 : 1); f.mesh.rotation.y += 0.003 * (calm ? 0.5 : 1); } });
   game.bouncePads.forEach(bp => { if (bp.mesh.userData.jet) { bp.mesh.userData.jet.scale.y = 1 + Math.sin(clock.elapsedTime * 3 + bp.x) * 0.25; bp.mesh.userData.jet.material.opacity = 0.3 + Math.abs(Math.sin(clock.elapsedTime * 3 + bp.x)) * 0.25; } });
   if (game.windParticles) { const pos = game.windParticles.geometry.attributes.position as THREE.BufferAttribute; const drift = game.gustState.strength ? game.gustState.active * 0.3 : -0.12; for (let i = 0; i < pos.count; i++) { let x = pos.getX(i) + drift * sp * (calm ? 0.4 : 1); if (x < -LEVEL_LEN / 2) x = LEVEL_LEN / 2; if (x > LEVEL_LEN / 2) x = -LEVEL_LEN / 2; pos.setX(i, x); } pos.needsUpdate = true; }
   game.decor.forEach(d => { if (d.userData && d.userData.spd) { d.position.x += d.userData.spd * sp; if (d.position.x > LEVEL_LEN / 2 + 5) d.position.x = -LEVEL_LEN / 2 - 5; const t = clock.elapsedTime * 6; d.children.forEach((w, i) => { w.rotation.z = (i === 0 ? 1 : -1) * (Math.PI / 2.4 + Math.sin(t) * 0.3); }); } else if (d.userData && d.userData.frost) { const pos = (d as THREE.Points).geometry.attributes.position as THREE.BufferAttribute; for (let i = 0; i < pos.count; i++) { let y = pos.getY(i) - 0.012 * sp * (calm ? 0.4 : 1); if (y < GROUND_Y) y = GROUND_Y + 6; pos.setY(i, y); } pos.needsUpdate = true; } });

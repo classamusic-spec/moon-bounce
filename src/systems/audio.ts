@@ -73,6 +73,7 @@ export class AudioSystem {
   sRock(): void { this.tone(160, 0.25, 'triangle', 0.07); }
   sPuff(): void { this.tone(440, 0.22, 'sine', 0.06); setTimeout(() => this.tone(320, 0.2, 'sine', 0.04), 45); }
   sIce(): void { this.tone(1200, 0.18, 'sine', 0.05); setTimeout(() => this.tone(1600, 0.22, 'sine', 0.04), 50); }
+  sSpark(): void { this.tone(700, 0.12, 'triangle', 0.05); setTimeout(() => this.tone(1100, 0.16, 'triangle', 0.04), 30); }
 
   sLaser(): void {
     if (this.calm || !this.actx) return;

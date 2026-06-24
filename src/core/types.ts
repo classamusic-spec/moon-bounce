@@ -65,8 +65,10 @@ export interface Dyn {
   frost?: boolean;
   gusts?: GustDyn;
   bubbles?: number[];
-  /** [x, heightAboveGround] freezable spouts: ice-puff them into a solid platform/bridge. */
+  /** [x, heightAboveGround] freezable ground spouts → solid platform/bridge (ice/bubble). */
   freezeSpots?: [number, number][];
+  /** [x, heightAboveGround] floating clouds → solid platform when sparked (vertical climbs). */
+  sparkClouds?: [number, number][];
 }
 
 export interface Planet {
@@ -215,11 +217,12 @@ export interface Gap {
   x1: number;
 }
 
-/** A freezable spout: hit it with an ice puff to turn it into a solid platform. */
+/** A puffable spot (spout or cloud) that solidifies into a platform when hit. */
 export interface Freezable {
-  jet: THREE.Group;
+  mesh: THREE.Group;
   x: number;
-  height: number;
+  /** Y of the resulting platform's top surface. */
+  y: number;
   w: number;
   frozen: boolean;
 }
