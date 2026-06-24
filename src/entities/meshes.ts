@@ -159,10 +159,9 @@ export function makePowerBox(tint: number): THREE.Group {
   const mat = new THREE.MeshStandardMaterial({ color: tint, roughness: 0.3, metalness: 0.2, emissive: tint, emissiveIntensity: 0.6 });
   const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat); cube.rotation.y = Math.PI / 4; g.add(cube); g.userData.cube = cube; g.userData.mat = mat;
   const glow = new THREE.Mesh(new THREE.SphereGeometry(0.95, 18, 14), new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.18 })); g.add(glow);
-  // a little spark/star icon floating in the middle of each face
-  const sparkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.8 });
-  const spark = new THREE.Mesh(new THREE.IcosahedronGeometry(0.18, 0), sparkMat); spark.position.set(0, 0, 0.55); g.add(spark);
-  const spark2 = spark.clone(); spark2.position.set(0, 0, -0.55); g.add(spark2);
+  // a bright power-star icon on the front and back faces (clearly not a "?" box)
+  const star = makeStarMesh(0.55, true); star.position.set(0, 0, 0.52); g.add(star);
+  const star2 = makeStarMesh(0.55, true); star2.position.set(0, 0, -0.52); star2.rotation.y = Math.PI; g.add(star2);
   return g;
 }
 

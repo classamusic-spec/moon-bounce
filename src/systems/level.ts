@@ -193,8 +193,14 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
       segs.forEach(([a, b]) => { const w = b - a; const slab = new THREE.Mesh(new THREE.BoxGeometry(w, 4, 6), gmat); slab.position.set((a + b) / 2, GROUND_Y - 2, -0.5); groundGroup.add(slab); });
       for (let x = -LEVEL_LEN / 2; x <= LEVEL_LEN / 2; x += 2.2) { if (inGap(x)) continue; const gy = groundAt(x); const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + Math.random() * 0.5, gy, -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
     }
-    // catch cushions beneath each gap
-    gaps.forEach(g => { const w = g[1] - g[0]; const cu = makeGapCushion(w, P.hill); cu.position.set((g[0] + g[1]) / 2, game.catchY - 0.4, 0); scene.add(cu); game.decor.push(cu); });
+    // dark pit shading behind each gap (so it reads as depth) + catch cushion below
+    const pitColor = new THREE.Color(P.ground).multiplyScalar(0.32).getHex();
+    const pitMat = new THREE.MeshBasicMaterial({ color: pitColor });
+    gaps.forEach(g => {
+      const w = g[1] - g[0];
+      const pit = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 11, 0.5), pitMat); pit.position.set((g[0] + g[1]) / 2, GROUND_Y - 3, -2.2); scene.add(pit); game.decor.push(pit);
+      const cu = makeGapCushion(w, P.hill); cu.position.set((g[0] + g[1]) / 2, game.catchY - 0.4, 0); scene.add(cu); game.decor.push(cu);
+    });
     // mesas (optional)
     (T.mesas || []).forEach(m => { const mesa = new THREE.Mesh(new THREE.BoxGeometry(6, 1.4, 5), bmat); mesa.position.set(m[0], GROUND_Y + m[1], -0.3); groundGroup.add(mesa); game.platforms.push({ mesh: mesa, x: m[0], y: GROUND_Y + m[1], w: 6, top: GROUND_Y + m[1] + 0.7 }); });
     game.levelMinX = -LEVEL_LEN / 2 + 2.2; game.levelMaxX = LEVEL_LEN / 2 + 1;
