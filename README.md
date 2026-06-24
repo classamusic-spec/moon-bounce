@@ -72,9 +72,13 @@ faithful port of `moon-bounce-source.html` — same constants, physics, and data
 npm install       # install deps (three, vite, typescript)
 npm run dev       # hot-reload dev server (http://localhost:5173)
 npm run build     # tsc --strict + vite production build → dist/
+npm run build:single # build, then inline everything → moon-bounce-app.html
 npm run preview   # serve the production build
 npm run typecheck # type-only check (strict, zero errors)
 ```
+
+`moon-bounce-app.html` is a single self-contained file (Three.js + game inlined)
+you can double-click to play offline — handy for quick testing on any device.
 
 ### Module layout
 ```
