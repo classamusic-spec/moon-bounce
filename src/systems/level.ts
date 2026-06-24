@@ -168,9 +168,17 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
 
     // horizontal ground built from steps or a shaped strip
     if (T.steps) {
+      // sub-intervals of [a,b] not covered by any gap (so gaps become real holes)
+      const splitOut = (a: number, b: number): [number, number][] => {
+        const within = gaps.filter(g => g[1] > a && g[0] < b).map(g => [Math.max(a, g[0]), Math.min(b, g[1])] as [number, number]).sort((x, y) => x[0] - y[0]);
+        const out: [number, number][] = []; let cur = a;
+        for (const g of within) { if (g[0] > cur) out.push([cur, g[0]]); cur = Math.max(cur, g[1]); }
+        if (cur < b) out.push([cur, b]);
+        return out;
+      };
       T.steps.forEach(s => {
-        const w = s[1] - s[0]; const seg = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 4, 6), gmat); seg.position.set((s[0] + s[1]) / 2, GROUND_Y + s[2] - 2, -0.5); groundGroup.add(seg);
-        for (let x = s[0]; x < s[1]; x += 2.4) { const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + 1, GROUND_Y + s[2], -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
+        splitOut(s[0], s[1]).forEach(([a, b]) => { const w = b - a; const seg = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 4, 6), gmat); seg.position.set((a + b) / 2, GROUND_Y + s[2] - 2, -0.5); groundGroup.add(seg); });
+        for (let x = s[0]; x < s[1]; x += 2.4) { if (inGap(x + 1)) continue; const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + 1, GROUND_Y + s[2], -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
       });
     } else {
       // build the base slab in segments so gaps are real holes you can see through
