@@ -53,8 +53,8 @@ export function buildDynamics(game: Game, P: Planet): void {
 
   // freezable ground spouts (ice/bubble): puff into a solid platform/bridge
   if (d.freezeSpots) { d.freezeSpots.forEach(([x, h]) => { const sp = makeSpout(h); sp.position.set(x, GROUND_Y, 0); scene.add(sp); game.freezables.push({ mesh: sp, x, y: GROUND_Y + h, w: 3.2, frozen: false }); }); }
-  // floating spark clouds (vertical climbs): spark into a solid step
-  if (d.sparkClouds) { d.sparkClouds.forEach(([x, y]) => { const c = makeCloud(0xe8e0ff); c.position.set(x, GROUND_Y + y, 0); scene.add(c); game.freezables.push({ mesh: c, x, y: GROUND_Y + y, w: 3.0, frozen: false }); }); }
+  // floating clouds (vertical climbs): puff (spark/ice) into a solid step
+  if (d.puffClouds) { d.puffClouds.forEach(([x, y]) => { const c = makeCloud(0xe8e0ff); c.position.set(x, GROUND_Y + y, 0); scene.add(c); game.freezables.push({ mesh: c, x, y: GROUND_Y + y, w: 3.0, frozen: false }); }); }
 }
 
 export function updateDynamics(game: Game, sp: number): void {

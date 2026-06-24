@@ -67,8 +67,8 @@ export interface Dyn {
   bubbles?: number[];
   /** [x, heightAboveGround] freezable ground spouts → solid platform/bridge (ice/bubble). */
   freezeSpots?: [number, number][];
-  /** [x, heightAboveGround] floating clouds → solid platform when sparked (vertical climbs). */
-  sparkClouds?: [number, number][];
+  /** [x, heightAboveGround] floating clouds → solid platform when puffed (ice/spark; vertical climbs). */
+  puffClouds?: [number, number][];
 }
 
 export interface Planet {
