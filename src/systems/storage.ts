@@ -23,8 +23,24 @@ export const SOLAR_STICKER = 'solar-system';
 
 export type CosmeticSlot = 'color' | 'hat';
 
-export interface SaveV3 {
-  v: 3;
+export interface GameSettings {
+  calm: boolean;
+  speakOn: boolean;
+  musicOn: boolean;
+  /** Speech rate, ~0.6–1.1. */
+  voiceRate: number;
+  /** Master sfx/music volume, 0–1. */
+  volume: number;
+  /** Dampen background motion, particles, parallax. */
+  reduceMotion: boolean;
+  /** Gentler "Tiny Explorer" assist (slower, easier). */
+  assist: boolean;
+}
+
+export type SettingKey = keyof GameSettings;
+
+export interface SaveV4 {
+  v: 4;
   lastPlanet: number;
   highestUnlocked: number;
   /** factsFound[planetIndex][factIndex] — which of the 5 facts are discovered. */
@@ -37,6 +53,33 @@ export interface SaveV3 {
   owned: string[];
   /** Currently equipped cosmetic ids. */
   equipped: { color: string; hat: string };
+  /** Persisted settings. */
+  settings: GameSettings;
+}
+
+function prefersReducedMotion(): boolean {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+function defaultSettings(): GameSettings {
+  return { calm: false, speakOn: true, musicOn: false, voiceRate: 0.78, volume: 1, reduceMotion: prefersReducedMotion(), assist: false };
+}
+
+function normalizeSettings(input: unknown): GameSettings {
+  const d = defaultSettings();
+  if (!input || typeof input !== 'object') return d;
+  const s = input as Record<string, unknown>;
+  const bool = (v: unknown, fb: boolean) => (typeof v === 'boolean' ? v : fb);
+  const num = (v: unknown, fb: number, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fb);
+  return {
+    calm: bool(s.calm, d.calm),
+    speakOn: bool(s.speakOn, d.speakOn),
+    musicOn: bool(s.musicOn, d.musicOn),
+    voiceRate: num(s.voiceRate, d.voiceRate, 0.5, 1.2),
+    volume: num(s.volume, d.volume, 0, 1),
+    reduceMotion: bool(s.reduceMotion, d.reduceMotion),
+    assist: bool(s.assist, d.assist),
+  };
 }
 
 function clampIndex(n: unknown): number {
@@ -66,10 +109,10 @@ function defaultEquipped(): { color: string; hat: string } {
   return { color: COLORS_DEFAULT, hat: HAT_DEFAULT };
 }
 
-function makeDefault(): SaveV3 {
+function makeDefault(): SaveV4 {
   return {
-    v: 3, lastPlanet: 0, highestUnlocked: 0, factsFound: emptyFacts(), stickers: [],
-    starsBank: 0, owned: freeOwnedIds(), equipped: defaultEquipped(),
+    v: 4, lastPlanet: 0, highestUnlocked: 0, factsFound: emptyFacts(), stickers: [],
+    starsBank: 0, owned: freeOwnedIds(), equipped: defaultEquipped(), settings: defaultSettings(),
   };
 }
 
@@ -77,20 +120,20 @@ function stringArray(input: unknown): string[] {
   return Array.isArray(input) ? (input as unknown[]).filter((s): s is string => typeof s === 'string') : [];
 }
 
-function read(): SaveV3 {
+function read(): SaveV4 {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return makeDefault();
     const d = JSON.parse(raw) as Record<string, unknown>;
-    if (!d || (d.v !== 1 && d.v !== 2 && d.v !== 3)) return makeDefault();
+    if (!d || (d.v !== 1 && d.v !== 2 && d.v !== 3 && d.v !== 4)) return makeDefault();
     // Fields are shared across versions; missing ones fall back to defaults,
-    // so v1/v2 saves migrate forward without losing progress.
+    // so older saves migrate forward without losing progress.
     const eq = (d.equipped && typeof d.equipped === 'object') ? d.equipped as Record<string, unknown> : {};
     const owned = new Set<string>([...freeOwnedIds(), ...stringArray(d.owned)]);
     const equippedColor = typeof eq.color === 'string' && owned.has(eq.color) ? eq.color : COLORS_DEFAULT;
     const equippedHat = typeof eq.hat === 'string' && owned.has(eq.hat) ? eq.hat : HAT_DEFAULT;
     return {
-      v: 3,
+      v: 4,
       lastPlanet: clampIndex(d.lastPlanet),
       highestUnlocked: clampIndex(d.highestUnlocked),
       factsFound: normalizeFacts(d.factsFound),
@@ -98,6 +141,7 @@ function read(): SaveV3 {
       starsBank: typeof d.starsBank === 'number' && Number.isFinite(d.starsBank) ? Math.max(0, Math.floor(d.starsBank)) : 0,
       owned: [...owned],
       equipped: { color: equippedColor, hat: equippedHat },
+      settings: normalizeSettings(d.settings),
     };
   } catch {
     return makeDefault();
@@ -110,7 +154,7 @@ const COLORS_DEFAULT = colorById('color-blue').id;
 const HAT_DEFAULT = hatById('hat-none').id;
 
 export class Storage {
-  private data: SaveV3;
+  private data: SaveV4;
 
   constructor() {
     this.data = read();
@@ -186,6 +230,12 @@ export class Storage {
 
   get equippedColor(): string { return this.data.equipped.color; }
   get equippedHat(): string { return this.data.equipped.hat; }
+
+  // ---- Settings ----
+  get settings(): GameSettings { return { ...this.data.settings }; }
+  setSetting<K extends SettingKey>(key: K, value: GameSettings[K]): void {
+    this.data.settings[key] = value; this.persist();
+  }
 
   /** Award any stickers the current progress has earned. */
   private refreshStickers(): void {

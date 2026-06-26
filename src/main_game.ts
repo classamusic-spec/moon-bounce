@@ -99,6 +99,8 @@ export class Game {
   hitCooldown = 0;
   factQueue: 'box' | 'sun' | 'moon' | null = null;
   bonusShown = false;
+  reduceMotion = false;
+  assist = false;
   private acc = 0;
 
   constructor(container: HTMLElement) {
@@ -109,6 +111,7 @@ export class Game {
   }
 
   init(): void {
+    this.applySettings();
     this.char = makeCharacter();
     this.stage.scene.add(this.char);
     this.refreshBlob();
@@ -148,7 +151,19 @@ export class Game {
     if (this.onGround) { this.vel.y = this.level.jump; this.onGround = false; this.squash = 0.7; this.audio.sJump(); }
   }
 
-  toggleCalm(): void { this.calm = !this.calm; this.audio.calm = this.calm; if (this.calm) this.audio.stopSpeak(); }
+  toggleCalm(): void { this.calm = !this.calm; this.audio.calm = this.calm; if (this.calm) this.audio.stopSpeak(); this.storage.setSetting('calm', this.calm); }
+
+  /** Load persisted settings into the game + audio (called on init). */
+  applySettings(): void {
+    const s = this.storage.settings;
+    this.calm = s.calm; this.audio.calm = s.calm;
+    this.audio.speakOn = s.speakOn;
+    this.audio.musicOn = s.musicOn;
+    this.audio.voiceRate = s.voiceRate;
+    this.audio.volume = s.volume;
+    this.reduceMotion = s.reduceMotion;
+    this.assist = s.assist;
+  }
 
   /** Re-apply the equipped color + hat to the player character. */
   refreshBlob(): void {
@@ -208,7 +223,7 @@ export class Game {
   }
 
   spawnFx(pos: THREE.Vector3, color: number, n?: number): void {
-    n = n || 10;
+    n = Math.max(1, Math.round((n || 10) * (this.reduceMotion ? 0.4 : 1)));
     for (let i = 0; i < n; i++) {
       const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 }));
       m.position.copy(pos); this.stage.scene.add(m);
@@ -292,7 +307,7 @@ export class Game {
     if (this.hitCooldown > 0) this.hitCooldown--;
     if (this.started && !this.paused) {
       let dir = 0; if (this.move.left) dir -= 1; if (this.move.right) dir += 1;
-      let targetVx = dir * MOVE_SPEED * (this.calm ? 0.7 : 1);
+      let targetVx = dir * MOVE_SPEED * (this.calm ? 0.7 : 1) * (this.assist ? 0.78 : 1);
 
       // --- wind zones (Venus) & ice friction (Uranus): horizontal push / slide ---
       let onIce = false, windPush = 0;
@@ -314,7 +329,7 @@ export class Game {
         if (dir !== 0) this.facing = dir;
       }
       this.charPos.x += this.vel.x; this.charPos.x = Math.max(this.levelMinX, Math.min(this.levelMaxX, this.charPos.x));
-      this.vel.y -= this.level.grav * (this.calm ? 0.7 : 1); this.charPos.y += this.vel.y * (this.calm ? 0.7 : 1);
+      this.vel.y -= this.level.grav * (this.calm ? 0.7 : 1) * (this.assist ? 0.85 : 1); this.charPos.y += this.vel.y * (this.calm ? 0.7 : 1);
 
       // ground height: vertical levels have a tiny base only near the middle; horizontal use groundAt
       let groundTop: number;
@@ -396,7 +411,7 @@ export class Game {
     }
 
     if (stage.parallaxFar) stage.parallaxFar.position.x = camera.position.x * 0.6;
-    if (stage.dustPts) { stage.dustPts.position.x = camera.position.x * 0.85; stage.dustPts.rotation.y += 0.0004 * sp; }
+    if (stage.dustPts) { stage.dustPts.position.x = camera.position.x * 0.85; if (!this.reduceMotion) stage.dustPts.rotation.y += 0.0004 * sp; }
     stage.parallaxMid.position.x = camera.position.x * 0.25;
     stage.parallaxMid.position.y = this.levelType === 'vertical' ? camera.position.y * 0.2 : 0;
 
@@ -429,7 +444,7 @@ export class Game {
     });
     this.fx = this.fx.filter(f => f.life > 0);
 
-    if (stage.parallaxFar) stage.parallaxFar.rotation.y += 0.00005 * sp;
+    if (stage.parallaxFar && !this.reduceMotion) stage.parallaxFar.rotation.y += 0.00005 * sp;
     stage.renderer.render(scene, camera);
   };
 }

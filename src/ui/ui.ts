@@ -338,8 +338,12 @@ export class UI {
 
     // settings toggles (in the Settings sheet)
     this.byId('setCalm').addEventListener('click', () => { game.toggleCalm(); this.setSettingToggle('setCalmT', game.calm); });
-    this.byId('setMusic').addEventListener('click', () => { audio.toggleMusic(); this.setSettingToggle('setMusicT', audio.musicOn); });
-    this.byId('setRead').addEventListener('click', () => { audio.toggleSpeak(); this.setSettingToggle('setReadT', audio.speakOn); });
+    this.byId('setMusic').addEventListener('click', () => { audio.toggleMusic(); this.setSettingToggle('setMusicT', audio.musicOn); game.storage.setSetting('musicOn', audio.musicOn); });
+    this.byId('setRead').addEventListener('click', () => { audio.toggleSpeak(); this.setSettingToggle('setReadT', audio.speakOn); game.storage.setSetting('speakOn', audio.speakOn); });
+    this.byId('setMotion').addEventListener('click', () => { game.reduceMotion = !game.reduceMotion; this.setSettingToggle('setMotionT', game.reduceMotion); game.storage.setSetting('reduceMotion', game.reduceMotion); });
+    this.byId('setAssist').addEventListener('click', () => { game.assist = !game.assist; this.setSettingToggle('setAssistT', game.assist); game.storage.setSetting('assist', game.assist); });
+    this.byId('setVoice').addEventListener('input', e => { const r = (+(e.target as HTMLInputElement).value) / 100; audio.voiceRate = r; game.storage.setSetting('voiceRate', r); });
+    this.byId('setVol').addEventListener('input', e => { const v = (+(e.target as HTMLInputElement).value) / 100; audio.volume = v; game.storage.setSetting('volume', v); });
     this.byId('replayBtn').addEventListener('click', () => audio.replayFact());
     if (!audio.ttsSupported) { this.byId('replayBtn').classList.add('hidden'); this.byId('setRead').style.display = 'none'; }
     this.byId('factBtn').addEventListener('click', () => game.onFactBtn());
@@ -370,6 +374,10 @@ export class UI {
 
     // reflect initial setting states
     this.setSettingToggle('setReadT', audio.speakOn); this.setSettingToggle('setMusicT', audio.musicOn); this.setSettingToggle('setCalmT', game.calm);
+    this.setSettingToggle('setMotionT', game.reduceMotion); this.setSettingToggle('setAssistT', game.assist);
+    (this.byId('setVoice') as HTMLInputElement).value = String(Math.round(audio.voiceRate * 100));
+    (this.byId('setVol') as HTMLInputElement).value = String(Math.round(audio.volume * 100));
+    if (!audio.ttsSupported) this.byId('voiceRow').style.display = 'none';
     this.updateMenuProgress(game.storage.highestUnlocked);
   }
 }

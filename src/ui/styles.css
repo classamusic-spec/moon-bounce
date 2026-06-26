@@ -180,6 +180,8 @@ canvas { display:block; }
 .set-toggle { font-weight:800; font-size:15px; color:#0a0a1f; background:#7fe0a0; border-radius:999px; padding:5px 14px; min-width:54px; transition:background .2s; }
 .set-toggle.off { background:rgba(255,255,255,.25); color:#fff; }
 .set-note { color:#9aa6d8; font-size:13px; font-weight:600; margin-bottom:18px; line-height:1.4; }
+.set-slider { display:flex; align-items:center; justify-content:space-between; gap:14px; background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.14); border-radius:18px; padding:14px 18px; }
+.set-slider input[type=range] { flex:1; max-width:150px; height:6px; accent-color:#7fe0a0; cursor:pointer; }
 
 /* ===== splash ===== */
 #splash { position:fixed; inset:0; z-index:40; display:flex; flex-direction:column; align-items:center; justify-content:center; background:radial-gradient(ellipse at 50% 40%, #1a1f4a, #06061a 75%); pointer-events:auto; overflow:hidden; }

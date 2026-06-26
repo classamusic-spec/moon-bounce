@@ -11,6 +11,8 @@ export class AudioSystem {
   pIndex = 0;
   musicOn = false;
   speakOn = true;
+  voiceRate = 0.78;
+  volume = 1;
 
   private actx: AudioContext | null = null;
   private musicTimer: ReturnType<typeof setInterval> | null = null;
@@ -50,14 +52,15 @@ export class AudioSystem {
   resume(): void {
     this.initAudio();
     if (this.actx && this.actx.state === 'suspended') this.actx.resume();
+    if (this.musicOn) this.startMusic(); // start music saved as on
   }
 
   tone(f: number, d: number, t?: OscType, v?: number): void {
-    if (this.calm || !this.actx) return;
+    if (this.calm || !this.actx || this.volume <= 0) return;
     const o = this.actx.createOscillator(), g = this.actx.createGain();
     o.type = t || 'sine'; o.frequency.value = f;
     g.gain.setValueAtTime(0, this.actx.currentTime);
-    g.gain.linearRampToValueAtTime(v || 0.1, this.actx.currentTime + 0.04);
+    g.gain.linearRampToValueAtTime((v || 0.1) * this.volume, this.actx.currentTime + 0.04);
     g.gain.exponentialRampToValueAtTime(0.0001, this.actx.currentTime + d);
     o.connect(g); g.connect(this.actx.destination); o.start(); o.stop(this.actx.currentTime + d);
   }
@@ -83,12 +86,12 @@ export class AudioSystem {
   }
 
   sLaser(): void {
-    if (this.calm || !this.actx) return;
+    if (this.calm || !this.actx || this.volume <= 0) return;
     const o = this.actx.createOscillator(), g = this.actx.createGain();
     o.type = 'square'; o.frequency.setValueAtTime(900, this.actx.currentTime);
     o.frequency.exponentialRampToValueAtTime(300, this.actx.currentTime + 0.12);
     g.gain.setValueAtTime(0, this.actx.currentTime);
-    g.gain.linearRampToValueAtTime(0.05, this.actx.currentTime + 0.01);
+    g.gain.linearRampToValueAtTime(0.05 * this.volume, this.actx.currentTime + 0.01);
     g.gain.exponentialRampToValueAtTime(0.0001, this.actx.currentTime + 0.14);
     o.connect(g); g.connect(this.actx.destination); o.start(); o.stop(this.actx.currentTime + 0.15);
   }
@@ -101,7 +104,7 @@ export class AudioSystem {
     const o = this.actx.createOscillator(), g = this.actx.createGain();
     o.type = 'sine'; o.frequency.value = f;
     g.gain.setValueAtTime(0, this.actx.currentTime);
-    g.gain.linearRampToValueAtTime(0.035, this.actx.currentTime + 0.3); // very soft
+    g.gain.linearRampToValueAtTime(0.035 * this.volume, this.actx.currentTime + 0.3); // very soft
     g.gain.exponentialRampToValueAtTime(0.0001, this.actx.currentTime + 1.8);
     o.connect(g); g.connect(this.actx.destination); o.start(); o.stop(this.actx.currentTime + 1.9);
     this.musicStep++;
@@ -132,7 +135,7 @@ export class AudioSystem {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       if (this.chosenVoice) u.voice = this.chosenVoice;
-      u.rate = 0.78; u.pitch = 1.18; u.volume = 0.95; // slower, gentle, clear for young listeners
+      u.rate = this.voiceRate; u.pitch = 1.18; u.volume = 0.95; // slower, gentle, clear for young listeners
       u.onstart = () => this.setReplayState(true);
       u.onend = () => this.setReplayState(false);
       u.onerror = () => this.setReplayState(false);
