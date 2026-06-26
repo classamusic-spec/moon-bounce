@@ -12,16 +12,20 @@ export class AudioSystem {
   musicOn = false;
   speakOn = true;
   voiceRate = 0.78;
-  volume = 1;
+  private _volume = 1;
 
   private actx: AudioContext | null = null;
+  private master: GainNode | null = null;   // master volume
+  private musicBus: GainNode | null = null; // music (duckable under speech)
+  private sfxBus: GainNode | null = null;   // sound effects
   private musicTimer: ReturnType<typeof setInterval> | null = null;
   private musicStep = 0;
-  private readonly SCALES = [
-    [261.6, 329.6, 392.0, 523.3],
-    [293.7, 349.2, 440.0, 587.3],
-    [261.6, 311.1, 392.0, 466.2],
-  ];
+  // per-planet pentatonic roots — each planet gets its own gentle mood
+  private readonly ROOTS = [261.6, 246.9, 220.0, 196.0, 174.6, 329.6, 311.1, 293.7];
+  private readonly PENTA = [1, 1.122, 1.26, 1.498, 1.682];
+
+  get volume(): number { return this._volume; }
+  set volume(v: number) { this._volume = v; if (this.master && this.actx) this.master.gain.setTargetAtTime(v, this.actx.currentTime, 0.02); }
 
   // ---- speech ----
   readonly ttsSupported = ('speechSynthesis' in window);
@@ -44,6 +48,11 @@ export class AudioSystem {
       try {
         const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         this.actx = new Ctor();
+        // master -> destination; music + sfx route through master so volume and
+        // ducking (lowering music under spoken facts) work cleanly.
+        this.master = this.actx.createGain(); this.master.gain.value = this._volume; this.master.connect(this.actx.destination);
+        this.musicBus = this.actx.createGain(); this.musicBus.connect(this.master);
+        this.sfxBus = this.actx.createGain(); this.sfxBus.connect(this.master);
       } catch (e) { /* no audio available */ }
     }
   }
@@ -56,13 +65,13 @@ export class AudioSystem {
   }
 
   tone(f: number, d: number, t?: OscType, v?: number): void {
-    if (this.calm || !this.actx || this.volume <= 0) return;
+    if (this.calm || !this.actx || !this.sfxBus || this._volume <= 0) return;
     const o = this.actx.createOscillator(), g = this.actx.createGain();
     o.type = t || 'sine'; o.frequency.value = f;
     g.gain.setValueAtTime(0, this.actx.currentTime);
-    g.gain.linearRampToValueAtTime((v || 0.1) * this.volume, this.actx.currentTime + 0.04);
+    g.gain.linearRampToValueAtTime(v || 0.1, this.actx.currentTime + 0.04);
     g.gain.exponentialRampToValueAtTime(0.0001, this.actx.currentTime + d);
-    o.connect(g); g.connect(this.actx.destination); o.start(); o.stop(this.actx.currentTime + d);
+    o.connect(g); g.connect(this.sfxBus); o.start(); o.stop(this.actx.currentTime + d);
   }
 
   sJump(): void { this.tone(240 + this.pIndex * 8, 0.26, 'sine', 0.09); }
@@ -86,28 +95,46 @@ export class AudioSystem {
   }
 
   sLaser(): void {
-    if (this.calm || !this.actx || this.volume <= 0) return;
+    if (this.calm || !this.actx || !this.sfxBus || this._volume <= 0) return;
     const o = this.actx.createOscillator(), g = this.actx.createGain();
     o.type = 'square'; o.frequency.setValueAtTime(900, this.actx.currentTime);
     o.frequency.exponentialRampToValueAtTime(300, this.actx.currentTime + 0.12);
     g.gain.setValueAtTime(0, this.actx.currentTime);
-    g.gain.linearRampToValueAtTime(0.05 * this.volume, this.actx.currentTime + 0.01);
+    g.gain.linearRampToValueAtTime(0.05, this.actx.currentTime + 0.01);
     g.gain.exponentialRampToValueAtTime(0.0001, this.actx.currentTime + 0.14);
-    o.connect(g); g.connect(this.actx.destination); o.start(); o.stop(this.actx.currentTime + 0.15);
+    o.connect(g); g.connect(this.sfxBus); o.start(); o.stop(this.actx.currentTime + 0.15);
   }
 
-  // ---- gentle ambient music ----
-  private musicNote(): void {
-    if (!this.musicOn || this.calm || !this.actx) return;
-    const scale = this.SCALES[this.pIndex % this.SCALES.length]!;
-    const f = scale[this.musicStep % scale.length]! / (this.musicStep % 8 < 4 ? 1 : 2);
+  // ---- gentle ambient music (per-planet pentatonic arpeggio over a warm pad) ----
+  private musicVoice(f: number, attack: number, dur: number, level: number, type: OscType): void {
+    if (!this.actx || !this.musicBus) return;
     const o = this.actx.createOscillator(), g = this.actx.createGain();
-    o.type = 'sine'; o.frequency.value = f;
+    o.type = type; o.frequency.value = f; o.detune.value = (Math.random() - 0.5) * 6; // subtle warmth
     g.gain.setValueAtTime(0, this.actx.currentTime);
-    g.gain.linearRampToValueAtTime(0.035 * this.volume, this.actx.currentTime + 0.3); // very soft
-    g.gain.exponentialRampToValueAtTime(0.0001, this.actx.currentTime + 1.8);
-    o.connect(g); g.connect(this.actx.destination); o.start(); o.stop(this.actx.currentTime + 1.9);
+    g.gain.linearRampToValueAtTime(level, this.actx.currentTime + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, this.actx.currentTime + dur);
+    o.connect(g); g.connect(this.musicBus); o.start(); o.stop(this.actx.currentTime + dur + 0.1);
+  }
+
+  private musicNote(): void {
+    if (!this.musicOn || this.calm || !this.actx || !this.musicBus) return;
+    const root = this.ROOTS[this.pIndex % this.ROOTS.length]!;
+    const scale = this.PENTA.map(r => root * r);
+    const step = this.musicStep;
+    // soft arpeggio note (drops an octave on the back half of each bar)
+    this.musicVoice(scale[step % scale.length]! * (step % 8 < 4 ? 1 : 0.5), 0.3, 1.9, 0.03, 'sine');
+    // warm sustained pad (root + a fourth, an octave down) at the top of each bar
+    if (step % 8 === 0) {
+      this.musicVoice(root * 0.5, 1.0, 5.0, 0.022, 'sine');
+      this.musicVoice(root * 0.667, 1.2, 5.0, 0.015, 'sine');
+    }
     this.musicStep++;
+  }
+
+  /** Lower music while a fact is being read aloud, then restore. */
+  private duckMusic(on: boolean): void {
+    if (!this.actx || !this.musicBus) return;
+    this.musicBus.gain.setTargetAtTime(on ? 0.25 : 1, this.actx.currentTime, 0.12);
   }
 
   startMusic(): void { if (this.musicTimer) return; this.musicTimer = setInterval(() => this.musicNote(), 900); }
@@ -136,9 +163,9 @@ export class AudioSystem {
       const u = new SpeechSynthesisUtterance(text);
       if (this.chosenVoice) u.voice = this.chosenVoice;
       u.rate = this.voiceRate; u.pitch = 1.18; u.volume = 0.95; // slower, gentle, clear for young listeners
-      u.onstart = () => this.setReplayState(true);
-      u.onend = () => this.setReplayState(false);
-      u.onerror = () => this.setReplayState(false);
+      u.onstart = () => { this.setReplayState(true); this.duckMusic(true); };
+      u.onend = () => { this.setReplayState(false); this.duckMusic(false); };
+      u.onerror = () => { this.setReplayState(false); this.duckMusic(false); };
       speechSynthesis.speak(u);
     } catch (e) { /* ignore */ }
   }
