@@ -328,7 +328,7 @@ export class Game {
       else if (this.gaps.length > 0 && this.gaps.some(g => this.charPos.x >= g.x0 && this.charPos.x <= g.x1)) { groundTop = -Infinity; }
       else { groundTop = this.groundAt(this.charPos.x) + CHAR_R; }
       let landed = false; const footY = groundTop;
-      if (this.charPos.y <= footY) { this.charPos.y = footY; if (!this.onGround) this.squash = 1.25; this.vel.y = 0; this.onGround = true; landed = true; }
+      if (this.charPos.y <= footY) { const thud = !this.onGround && this.vel.y < -0.14; this.charPos.y = footY; if (!this.onGround) this.squash = 1.25; this.vel.y = 0; this.onGround = true; landed = true; if (thud) this.spawnFx(new THREE.Vector3(this.charPos.x, footY - CHAR_R + 0.1, 0), this.level.dust, 6); }
       if (this.vel.y <= 0) { this.platforms.forEach(pl => { if (Math.abs(this.charPos.x - pl.x) < pl.w / 2 + CHAR_R * 0.6) { const top = pl.top + CHAR_R; if (this.charPos.y <= top && this.charPos.y > top - 0.5 && this.charPos.y > footY - 0.1) { this.charPos.y = top; this.vel.y = 0; if (!this.onGround) this.squash = 1.25; this.onGround = true; landed = true; } } }); }
       // moving platforms: stand on top AND get carried
       if (this.vel.y <= 0) { this.movingPlats.forEach(mp => { if (Math.abs(this.charPos.x - mp.mesh.position.x) < mp.w / 2 + CHAR_R * 0.5) { const top = mp.mesh.position.y + 0.22 + CHAR_R; if (this.charPos.y <= top && this.charPos.y > top - 0.5) { this.charPos.y = top; this.vel.y = 0; if (!this.onGround) this.squash = 1.2; this.onGround = true; landed = true; if (mp.axis === 'x') { this.charPos.x += mp.dx || 0; } } } }); }
@@ -407,8 +407,14 @@ export class Game {
     updateDynamics(this, sp);
     updatePuffs(this, sp);
 
-    // particle FX — faithful to the prototype, which only filters this array
-    // (spawnFx particles keep life=1, so this never actually culls them).
+    // particle FX: drift, settle, and fade out (collect/pop/squish sparkles)
+    this.fx.forEach(f => {
+      f.mesh.position.x += f.v.x * sp; f.mesh.position.y += f.v.y * sp; f.mesh.position.z += f.v.z * sp;
+      f.v.y -= 0.011 * sp; f.v.multiplyScalar(0.96);
+      f.life -= 0.05 * sp;
+      (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life);
+      if (f.life <= 0) scene.remove(f.mesh);
+    });
     this.fx = this.fx.filter(f => f.life > 0);
 
     if (stage.parallaxFar) stage.parallaxFar.rotation.y += 0.00005 * sp;

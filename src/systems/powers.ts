@@ -58,6 +58,8 @@ export function updatePuffs(game: Game, sp: number): void {
     p.mesh.rotation.z += 0.25 * sp;
     const core = p.mesh.userData.core as THREE.Mesh | undefined;
     if (core) (core.material as THREE.MeshBasicMaterial).opacity = 0.7 + Math.random() * 0.3;
+    // soft element-tinted trail
+    if (p.life % 3 === 0 && game.currentPower) game.spawnFx(p.mesh.position, powerTint(game.currentPower), 1);
     // gently transform a friendly alien into a reward star (themed by power)
     game.enemies.forEach(e => {
       if (!e.alive) return;
