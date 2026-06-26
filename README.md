@@ -75,7 +75,12 @@ npm run build     # tsc --strict + vite production build → dist/
 npm run build:single # build, then inline everything → moon-bounce-app.html
 npm run preview   # serve the production build
 npm run typecheck # type-only check (strict, zero errors)
+npm test          # unit tests (save migrations + level-data integrity)
+npm run playtest  # headless smoke test of moon-bounce-app.html (boot, 8 levels, power, save)
 ```
+
+CI (GitHub Actions, `.github/workflows/ci.yml`) runs typecheck + unit tests +
+build on every push, plus a headless playtest job.
 
 `moon-bounce-app.html` is a single self-contained file (Three.js + game inlined)
 you can double-click to play offline — handy for quick testing on any device.
