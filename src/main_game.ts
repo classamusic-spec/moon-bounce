@@ -20,6 +20,8 @@ import { UI } from './ui/ui';
 
 // The Game: owns all mutable state, input, the physics step, and the main loop.
 // Ported faithfully from the prototype's globals + animate()/physics functions.
+const PHYS_STEP = 1 / 60;
+
 export class Game {
   readonly stage: Stage;
   readonly audio: AudioSystem;
@@ -97,6 +99,7 @@ export class Game {
   hitCooldown = 0;
   factQueue: 'box' | 'sun' | 'moon' | null = null;
   bonusShown = false;
+  private acc = 0;
 
   constructor(container: HTMLElement) {
     this.stage = new Stage(container);
@@ -282,20 +285,10 @@ export class Game {
     this.factQueue = null;
   }
 
-  // ---- main loop ----
-  private animate = (): void => {
-    requestAnimationFrame(this.animate);
-    this.audio.calm = this.calm; this.audio.pIndex = this.pIndex;
-    if (this.mode === 'flight') { updateFlight(this); return; }
-
-    const stage = this.stage;
-    const scene = stage.scene;
-    const camera = stage.camera;
-    const clock = stage.clock;
-    clock.getDelta(); const sp = this.calm ? 0.55 : 1;
-    stage.skyTop.lerp(stage.tSkyTop, 0.05); stage.skyBot.lerp(stage.tSkyBot, 0.05); stage.setSkyBg();
+  /** Fixed-timestep physics: one 1/60s step (run N times per frame). */
+  private stepPhysics(): void {
+    const scene = this.stage.scene;
     if (this.hitCooldown > 0) this.hitCooldown--;
-
     if (this.started && !this.paused) {
       let dir = 0; if (this.move.left) dir -= 1; if (this.move.right) dir += 1;
       let targetVx = dir * MOVE_SPEED * (this.calm ? 0.7 : 1);
@@ -360,6 +353,24 @@ export class Game {
 
       if (this.sunPiece && Math.hypot(this.charPos.x - this.sunPiece.group.position.x, this.charPos.y - this.sunPiece.group.position.y) < CHAR_R + 1.1) this.reachSun();
     }
+  }
+
+  // ---- main loop ----
+  private animate = (): void => {
+    requestAnimationFrame(this.animate);
+    this.audio.calm = this.calm; this.audio.pIndex = this.pIndex;
+    if (this.mode === 'flight') { updateFlight(this); return; }
+
+    const stage = this.stage;
+    const scene = stage.scene;
+    const camera = stage.camera;
+    const clock = stage.clock;
+    const dt = Math.min(clock.getDelta(), 0.1); const sp = this.calm ? 0.55 : 1;
+    stage.skyTop.lerp(stage.tSkyTop, 0.05); stage.skyBot.lerp(stage.tSkyBot, 0.05); stage.setSkyBg();
+    // fixed-timestep physics: same number of 1/60s steps at any refresh rate
+    this.acc += dt; let physSteps = 0;
+    while (this.acc >= PHYS_STEP && physSteps < 6) { this.stepPhysics(); this.acc -= PHYS_STEP; physSteps++; }
+    if (physSteps >= 6) this.acc = 0;
 
     this.char.position.set(this.charPos.x, this.charPos.y, 0);
     this.squash += (1 - this.squash) * 0.15;
