@@ -74,6 +74,13 @@ export class AudioSystem {
   sPuff(): void { this.tone(440, 0.22, 'sine', 0.06); setTimeout(() => this.tone(320, 0.2, 'sine', 0.04), 45); }
   sIce(): void { this.tone(1200, 0.18, 'sine', 0.05); setTimeout(() => this.tone(1600, 0.22, 'sine', 0.04), 50); }
   sSpark(): void { this.tone(700, 0.12, 'triangle', 0.05); setTimeout(() => this.tone(1100, 0.16, 'triangle', 0.04), 30); }
+  sFlame(): void { this.tone(260, 0.2, 'sine', 0.06); setTimeout(() => this.tone(180, 0.26, 'sine', 0.045), 50); }
+  sBubble(): void { this.tone(320, 0.16, 'sine', 0.06); setTimeout(() => this.tone(560, 0.18, 'sine', 0.05), 55); }
+
+  /** Element-flavoured cast sound for the puff power. */
+  sCast(power: 'flame' | 'ice' | 'bubble' | 'spark'): void {
+    if (power === 'ice') this.sIce(); else if (power === 'spark') this.sSpark(); else if (power === 'bubble') this.sBubble(); else this.sFlame();
+  }
 
   sLaser(): void {
     if (this.calm || !this.actx) return;

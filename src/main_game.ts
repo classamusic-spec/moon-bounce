@@ -156,7 +156,7 @@ export class Game {
   }
 
   goToPlanet(i: number): void {
-    this.audio.resume();
+    this.audio.resume(); this.ui.fadeTransition();
     // make sure we're cleanly in platformer mode
     if (this.mode === 'flight') {
       if (this.flight) { try { this.flight.fscene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry && m.geometry.dispose) m.geometry.dispose(); }); } catch (e) { /* ignore */ } this.flight = null; }
@@ -175,7 +175,7 @@ export class Game {
 
   /** Enter a moon bonus level (parent planet must be unlocked). */
   goToMoon(moon: Moon): void {
-    this.audio.resume();
+    this.audio.resume(); this.ui.fadeTransition();
     this.pIndex = moon.parent; this.audio.pIndex = moon.parent;
     this.ui.byId('select').classList.remove('show');
     this.ui.byId('menu').classList.remove('show');
@@ -184,6 +184,7 @@ export class Game {
 
   /** Leave a moon: drop back to its parent planet and reopen the Galaxy Map. */
   exitMoon(): void {
+    this.ui.fadeTransition();
     const parent = this.currentMoon ? this.currentMoon.parent : this.pIndex;
     this.pIndex = parent; this.audio.pIndex = parent;
     this.loadLevel(parent, true); this.paused = false;

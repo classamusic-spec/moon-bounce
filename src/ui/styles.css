@@ -4,6 +4,9 @@ html,body { width:100%; height:100%; overflow:hidden; background:#0a0a1f; font-f
 #game { position:fixed; inset:0; }
 canvas { display:block; }
 #hud { position:fixed; inset:0; pointer-events:none; z-index:10; }
+#fade { position:fixed; inset:0; z-index:35; background:#0a0a1f; opacity:0; pointer-events:none; }
+#fade.flash { animation:fadeFlash .55s ease; }
+@keyframes fadeFlash { 0%{opacity:0;} 38%{opacity:.78;} 100%{opacity:0;} }
 
 .top-bar { position:absolute; top:0; left:0; right:0; padding:16px 18px 0; display:flex; flex-direction:column; gap:10px; }
 .row { display:flex; align-items:center; justify-content:space-between; gap:12px; }

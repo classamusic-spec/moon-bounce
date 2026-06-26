@@ -30,6 +30,9 @@ export class UI {
 
   setPuffVisible(on: boolean): void { const b = document.getElementById('puffBtn'); if (b) b.style.display = on ? 'flex' : 'none'; }
 
+  /** A soft dark cross-fade for level/planet/moon transitions. */
+  fadeTransition(): void { const el = this.byId('fade'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+
   setHUD(stars: number, boxesFound: number): void {
     this.byId('starCount').textContent = String(stars);
     this.byId('boxCount').textContent = boxesFound + '/5';

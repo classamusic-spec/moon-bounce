@@ -28,7 +28,7 @@ export function castPuff(game: Game): void {
   m.position.set(game.charPos.x + game.facing * 0.7, game.charPos.y + 0.1, 0);
   game.stage.scene.add(m);
   game.puffs.push({ mesh: m, vx: game.facing * PUFF_SPEED, life: PUFF_LIFE });
-  game.audio.sPuff();
+  game.audio.sCast(game.currentPower);
 }
 
 // Powers that solidify a spout/cloud into a platform.

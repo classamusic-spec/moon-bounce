@@ -140,6 +140,7 @@ function endFlight(game: Game): void {
   const fa = ui.byId('flightArrive'); fa.classList.remove('show'); void fa.offsetWidth; fa.classList.add('show');
   if (!game.calm) game.audio.sSun();
   setTimeout(() => {
+    ui.fadeTransition();
     ui.byId('flightHud').classList.remove('show');
     ui.bySel('.top-bar').style.display = '';
     ui.byId('planets').style.display = '';
