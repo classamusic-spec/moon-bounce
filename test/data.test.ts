@@ -32,15 +32,30 @@ describe('PLANETS integrity', () => {
     }
   });
 
-  it('has well-formed, non-overlapping gaps', () => {
-    for (const p of PLANETS) {
-      const gaps = p.terrain.gaps || [];
+  it('has well-formed, non-overlapping gaps (base + variants)', () => {
+    const checkGaps = (gaps: [number, number][]) => {
       for (const [a, b] of gaps) {
         expect(b).toBeGreaterThan(a);
         expect(b - a).toBeLessThanOrEqual(9); // sanity: not absurdly wide
       }
       const sorted = [...gaps].sort((x, y) => x[0] - y[0]);
       for (let i = 1; i < sorted.length; i++) expect(sorted[i]![0]).toBeGreaterThanOrEqual(sorted[i - 1]![1]);
+    };
+    for (const p of PLANETS) {
+      checkGaps(p.terrain.gaps || []);
+      for (const v of p.terrain.variants || []) {
+        checkGaps(v.gaps || []);
+        for (const [x, h] of v.platforms || []) { expect(Math.abs(x)).toBeLessThanOrEqual(LEVEL_LEN / 2 + 2); expect(h).toBeGreaterThan(0); }
+      }
+    }
+  });
+
+  it('only varies platforms/movers (not the level type) in variants', () => {
+    for (const p of PLANETS) {
+      for (const v of p.terrain.variants || []) {
+        expect(v.type).toBeUndefined(); // variants must not change horizontal/vertical
+        expect((v.platforms || v.movingPlats)).toBeTruthy(); // a variant should change something
+      }
     }
   });
 

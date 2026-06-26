@@ -32,6 +32,8 @@ export interface Terrain {
   movingPlats?: MovingPlatData[];
   /** [x0, x1] holes in the ground; a soft catch below bounces the blob back (no fail). */
   gaps?: [number, number][];
+  /** Alternate layouts (platform/moving-platform overrides) rotated per visit. */
+  variants?: Partial<Terrain>[];
 }
 
 export interface WindDyn {

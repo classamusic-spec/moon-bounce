@@ -154,7 +154,7 @@ function endFlight(game: Game): void {
     game.mode = 'platformer';
     game.pIndex++; game.audio.pIndex = game.pIndex;
     game.storage.unlock(game.pIndex); game.ui.updateMenuProgress(game.storage.highestUnlocked);
-    game.loadLevel(game.pIndex, false); game.paused = false;
+    game.loadLevel(game.pIndex, false); game.storage.bumpVisit(game.pIndex); game.paused = false;
   }, 1600);
 }
 

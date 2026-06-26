@@ -111,6 +111,18 @@ describe('Save migrations', () => {
   });
 });
 
+describe('Layout-variant rotation', () => {
+  it('tracks per-planet visits independently and persists', () => {
+    const a = new Storage();
+    a.bumpVisit(2); a.bumpVisit(2); a.bumpVisit(5);
+    expect(a.planetVisits(2)).toBe(2);
+    expect(a.planetVisits(5)).toBe(1);
+    expect(a.planetVisits(0)).toBe(0);
+    const b = new Storage();
+    expect(b.planetVisits(2)).toBe(2);
+  });
+});
+
 describe('Power-Master stickers', () => {
   it('awards a master sticker explicitly', () => {
     const s = new Storage();

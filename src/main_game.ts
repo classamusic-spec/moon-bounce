@@ -185,7 +185,7 @@ export class Game {
     this.ui.byId('select').classList.remove('show');
     this.ui.byId('menu').classList.remove('show');
     this.ui.byId('fact').classList.remove('show');
-    this.pIndex = i; this.audio.pIndex = i; this.storage.setLastPlanet(i); this.loadLevel(i, true); this.paused = false; this.started = true;
+    this.pIndex = i; this.audio.pIndex = i; this.storage.setLastPlanet(i); this.loadLevel(i, true); this.storage.bumpVisit(i); this.paused = false; this.started = true;
   }
 
   /** Enter a moon bonus level (parent planet must be unlocked). */

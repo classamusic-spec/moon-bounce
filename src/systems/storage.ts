@@ -55,6 +55,8 @@ export interface SaveV4 {
   equipped: { color: string; hat: string };
   /** Persisted settings. */
   settings: GameSettings;
+  /** Per-planet visit counts (drives layout-variant rotation). */
+  visits: number[];
 }
 
 function prefersReducedMotion(): boolean {
@@ -109,10 +111,18 @@ function defaultEquipped(): { color: string; hat: string } {
   return { color: COLORS_DEFAULT, hat: HAT_DEFAULT };
 }
 
+function emptyVisits(): number[] { return PLANETS.map(() => 0); }
+
+function normalizeVisits(input: unknown): number[] {
+  const out = emptyVisits();
+  if (Array.isArray(input)) for (let i = 0; i < out.length; i++) { const v = input[i]; if (typeof v === 'number' && Number.isFinite(v) && v >= 0) out[i] = Math.floor(v); }
+  return out;
+}
+
 function makeDefault(): SaveV4 {
   return {
     v: 4, lastPlanet: 0, highestUnlocked: 0, factsFound: emptyFacts(), stickers: [],
-    starsBank: 0, owned: freeOwnedIds(), equipped: defaultEquipped(), settings: defaultSettings(),
+    starsBank: 0, owned: freeOwnedIds(), equipped: defaultEquipped(), settings: defaultSettings(), visits: emptyVisits(),
   };
 }
 
@@ -142,6 +152,7 @@ function read(): SaveV4 {
       owned: [...owned],
       equipped: { color: equippedColor, hat: equippedHat },
       settings: normalizeSettings(d.settings),
+      visits: normalizeVisits(d.visits),
     };
   } catch {
     return makeDefault();
@@ -236,6 +247,10 @@ export class Storage {
   setSetting<K extends SettingKey>(key: K, value: GameSettings[K]): void {
     this.data.settings[key] = value; this.persist();
   }
+
+  // ---- Layout-variant rotation ----
+  planetVisits(i: number): number { return this.data.visits[clampIndex(i)] ?? 0; }
+  bumpVisit(i: number): void { const idx = clampIndex(i); this.data.visits[idx] = (this.data.visits[idx] ?? 0) + 1; this.persist(); }
 
   /** Award any stickers the current progress has earned. */
   private refreshStickers(): void {

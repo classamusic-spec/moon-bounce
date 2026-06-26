@@ -115,7 +115,12 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
   game.ui.setPuffVisible(false);
   const stage = game.stage;
   const scene = stage.scene;
-  const T = P.terrain || { type: 'horizontal' as const };
+  // rotate through layout variants per visit (variant 0 = base terrain)
+  const base = P.terrain || { type: 'horizontal' as const };
+  const variants = base.variants || [];
+  const variantCount = 1 + variants.length;
+  const vIdx = variantCount > 1 ? game.storage.planetVisits(game.pIndex) % variantCount : 0;
+  const T = vIdx > 0 ? { ...base, ...variants[vIdx - 1]! } : base;
   game.levelType = T.type || 'horizontal';
   game.levelHeight = T.height || 34;
   game.ui.setPlanetName(P.name);
