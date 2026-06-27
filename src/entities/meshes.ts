@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CHAR_R } from '../core/constants';
 import type { HatKind } from '../data/cosmetics';
+import { assets } from '../systems/assets';
 
 // All procedural mesh factories. Ported verbatim from the prototype.
 // Each returns a fresh Object3D; callers add it to a scene and position it.
@@ -112,13 +113,18 @@ export function makeEnemy(color: number): THREE.Group {
 
 export function makeCloud(tint?: number): THREE.Group {
   const g = new THREE.Group();
+  const model = assets.getModel('cloud');
+  if (model) { g.add(model); return g; }
   const m = new THREE.MeshStandardMaterial({ color: tint || 0xffffff, roughness: 0.9, transparent: true, opacity: 0.92, emissive: 0x223344, emissiveIntensity: 0.05 });
   ([[-0.9, 0, 0.8], [0, 0.15, 1.0], [0.9, 0, 0.85], [0.4, -0.1, 0.7], [-0.4, -0.05, 0.75]] as [number, number, number][]).forEach(p => { const puff = new THREE.Mesh(new THREE.SphereGeometry(p[2], 16, 12), m); puff.position.set(p[0], p[1], 0); puff.scale.y = 0.7; g.add(puff); });
   return g;
 }
 
 export function makeBird(): THREE.Group {
-  const g = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0x445566 });
+  const g = new THREE.Group();
+  const model = assets.getModel('bird');
+  if (model) { g.add(model); return g; }
+  const m = new THREE.MeshStandardMaterial({ color: 0x445566 });
   const l = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 4), m); l.rotation.z = Math.PI / 2.4; l.position.x = -0.18; g.add(l);
   const r = l.clone(); r.rotation.z = -Math.PI / 2.4; r.position.x = 0.18; g.add(r);
   return g;
@@ -203,7 +209,10 @@ export function makeSolidPlat(width: number, tint: number): THREE.Mesh {
 }
 
 export function makeBush(): THREE.Group {
-  const g = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0x4fae6d, roughness: 0.85, emissive: 0x224422, emissiveIntensity: 0.1 });
+  const g = new THREE.Group();
+  const model = assets.getModel('bush');
+  if (model) { g.add(model); return g; }
+  const m = new THREE.MeshStandardMaterial({ color: 0x4fae6d, roughness: 0.85, emissive: 0x224422, emissiveIntensity: 0.1 });
   ([[0, 0.1, 0.55], [-0.4, -0.05, 0.4], [0.4, -0.05, 0.4], [0, 0.32, 0.4]] as [number, number, number][]).forEach(p => { const leaf = new THREE.Mesh(new THREE.SphereGeometry(p[2], 14, 11), m); leaf.position.set(p[0], p[1], 0); leaf.scale.y = 0.8; g.add(leaf); });
   const fmat = new THREE.MeshStandardMaterial({ color: 0xff7aa8, emissive: 0xff5588, emissiveIntensity: 0.3 });
   ([[-0.3, 0.3], [0.3, 0.35], [0, 0.55]] as [number, number][]).forEach(p => { const fl = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), fmat); fl.position.set(p[0], p[1], 0.5); g.add(fl); });

@@ -1,7 +1,8 @@
 import './ui/styles.css';
 import { Game } from './main_game';
+import { assets } from './systems/assets';
 
-// Entry point: build the game into #game and start it.
+// Entry point: preload optional art, then build the game into #game and start it.
 const container = document.getElementById('game');
 if (!container) throw new Error('Missing #game container');
 
@@ -21,16 +22,36 @@ function showFallback(msg: string): void {
   document.body.appendChild(d);
 }
 
-if (!webglSupported()) {
-  showFallback('This game needs 3D graphics (WebGL), which this browser has turned off. Try a different browser, or enable hardware acceleration.');
-} else {
+function setLoadProgress(loaded: number, total: number): void {
+  const fill = document.getElementById('loadFill');
+  if (fill) fill.style.width = (total > 0 ? Math.round((loaded / total) * 100) : 100) + '%';
+}
+
+function hideLoading(): void {
+  const el = document.getElementById('loading');
+  if (!el) return;
+  el.classList.add('hide');
+  setTimeout(() => el.remove(), 500);
+}
+
+async function start(): Promise<void> {
+  if (!webglSupported()) {
+    showFallback('This game needs 3D graphics (WebGL), which this browser has turned off. Try a different browser, or enable hardware acceleration.');
+    hideLoading();
+    return;
+  }
   try {
-    const game = new Game(container);
+    await assets.preload(setLoadProgress);
+    const game = new Game(container!);
     game.init();
     // Expose a small debug hook (handy for headless tests / driving state).
     (window as unknown as { __game: Game }).__game = game;
+    hideLoading();
   } catch (e) {
     showFallback('Something went wrong starting the game. Please refresh to try again.');
+    hideLoading();
     throw e;
   }
 }
+
+void start();
