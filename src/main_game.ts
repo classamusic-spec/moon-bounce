@@ -15,7 +15,7 @@ import { AudioSystem } from './systems/audio';
 import { Stage, loadLevel } from './systems/level';
 import { updateDynamics, stepDynamics } from './systems/dynamics';
 import { startFlight, flightShoot, updateFlight } from './systems/flight';
-import { Storage, masterStickerId } from './systems/storage';
+import { Storage, masterStickerId, secretStickerId } from './systems/storage';
 import { UI } from './ui/ui';
 
 // The Game: owns all mutable state, input, the physics step, and the main loop.
@@ -110,6 +110,17 @@ export class Game {
   worldT = 0;
   private acc = 0;
 
+  // ---- blob personality (all purely visual, all gentle) ----
+  /** Seconds with no input while grounded — drives look-around + sleepy breathing. */
+  idleT = 0;
+  /** Countdown to the next blink, then a short closed-eyes phase. */
+  private blinkNext = 2.5;
+  private blinkHold = 0;
+  /** Level-start greeting wiggle (counts down from 1.4). */
+  greetT = 0;
+  /** Joyful 360° spin on big rewards (counts down from 1). */
+  celebrateT = 0;
+
   constructor(container: HTMLElement) {
     this.stage = new Stage(container);
     this.audio = new AudioSystem();
@@ -133,11 +144,11 @@ export class Game {
   }
 
   // ---- system wrappers ----
-  loadLevel(i: number, instant: boolean): void { this.onMoon = false; this.currentMoon = null; loadLevel(this, PLANETS[i]!, instant); }
-  loadMoon(moon: Moon): void { this.onMoon = true; this.currentMoon = moon; loadLevel(this, moon, true); }
+  loadLevel(i: number, instant: boolean): void { this.onMoon = false; this.currentMoon = null; loadLevel(this, PLANETS[i]!, instant); this.greetT = 1.4; this.idleT = 0; }
+  loadMoon(moon: Moon): void { this.onMoon = true; this.currentMoon = moon; loadLevel(this, moon, true); this.greetT = 1.4; this.idleT = 0; }
   startFlight(): void { startFlight(this); }
   flightShoot(): void { flightShoot(this); }
-  castPuff(): void { castPuff(this); }
+  castPuff(): void { this.idleT = 0; castPuff(this); }
 
   /** Bumping the Power Box grants this level's elemental power. */
   grantPower(): void {
@@ -155,6 +166,7 @@ export class Game {
   // ---- player actions ----
   doJump(): void {
     if (this.paused || !this.started) return;
+    this.idleT = 0;
     if (this.onGround) { this.vel.y = this.level.jump; this.onGround = false; this.squash = 0.7; this.audio.sJump(); }
   }
 
@@ -218,7 +230,18 @@ export class Game {
   // ---- rewards / interactions ----
   collectStar(s: StarItem): void {
     if (s.cache) { this.collectCache(s); return; }
-    s.alive = false; this.audio.sStar(); this.spawnFx(s.mesh.position, 0xffe9a8); this.stage.scene.remove(s.mesh); this.smallStars++; this.storage.addStars(1); this.updateHUD();
+    s.alive = false; this.audio.sStar(); this.spawnFx(s.mesh.position, s.secret ? 0xaaccff : 0xffe9a8); this.stage.scene.remove(s.mesh); this.smallStars++; this.storage.addStars(1); this.updateHUD();
+    if (s.secret && !this.starItems.some(o => o.alive && o.secret)) this.completeSecret();
+  }
+
+  /** All 4 hidden stars found: bonus stars + a Star-Finder sticker + a happy spin. */
+  completeSecret(): void {
+    this.audio.sSun();
+    const bonus = 5; this.smallStars += bonus; this.storage.addStars(bonus); this.updateHUD();
+    if (!this.onMoon) this.storage.awardSticker(secretStickerId(this.pIndex));
+    this.ui.showToast('🔭', 'Hidden stars found! +' + bonus);
+    this.celebrateT = 1; // the blob does a joyful spin
+    this.spawnFx(new THREE.Vector3(this.charPos.x, this.charPos.y + 1, 0), 0xaaccff, 14);
   }
 
   /** Found a secret power cache: bonus stars + a Power-Master sticker. */
@@ -228,6 +251,7 @@ export class Game {
     const bonus = 8; this.smallStars += bonus; this.storage.addStars(bonus); this.updateHUD();
     if (!this.onMoon) this.storage.awardSticker(masterStickerId(this.pIndex));
     this.ui.showToast('⭐', 'Power Master! +' + bonus);
+    this.celebrateT = 1;
   }
 
   spawnFx(pos: THREE.Vector3, color: number, n?: number): void {
@@ -252,6 +276,7 @@ export class Game {
     if (this.bonusShown) return; this.bonusShown = true; this.audio.sSun();
     for (let i = 0; i < 3; i++) setTimeout(() => this.spawnFx(new THREE.Vector3(this.charPos.x, this.charPos.y + 1, 0), 0xffe082, 14), i * 180);
     this.ui.triggerBonusToast();
+    this.celebrateT = 1; // joyful spin for finding all 5 facts
   }
 
   squishEnemy(e: Enemy): void {
@@ -336,6 +361,7 @@ export class Game {
     if (this.started && !this.paused) {
       this.stepWorld();
       let dir = 0; if (this.move.left) dir -= 1; if (this.move.right) dir += 1;
+      if (dir !== 0 || !this.onGround) this.idleT = 0; else this.idleT += PHYS_STEP;
       let targetVx = dir * MOVE_SPEED * (this.calm ? 0.7 : 1) * (this.assist ? 0.78 : 1);
 
       // --- wind zones (Venus) & ice friction (Uranus): horizontal push / slide ---
@@ -433,9 +459,31 @@ export class Game {
     this.char.position.set(this.charPos.x, this.charPos.y, 0);
     this.squash += (1 - this.squash) * 0.15;
     const stretch = this.vel.y > 0 ? 1 + this.vel.y * 0.25 : 1;
-    (this.char.userData.body as THREE.Mesh).scale.set(this.squash, (2 - this.squash) * 0.92 * stretch, this.squash);
-    this.char.rotation.y = this.facing > 0 ? 0.25 : -0.25;
-    ((this.char.userData.bulb as THREE.Mesh).material as THREE.MeshStandardMaterial).emissiveIntensity = 0.6 + Math.sin(clock.elapsedTime * 2) * 0.3;
+    // sleepy breathing after ~10s of stillness (very subtle, very slow)
+    const breathe = this.idleT > 10 ? 1 + Math.sin(this.idleT * 2.0) * 0.02 : 1;
+    (this.char.userData.body as THREE.Mesh).scale.set(this.squash, (2 - this.squash) * 0.92 * stretch * breathe, this.squash);
+
+    // --- blob personality (purely visual, gentle, reduce-motion aware) ---
+    // blink: soft close every few seconds
+    this.blinkNext -= dt * sp;
+    if (this.blinkNext <= 0) { this.blinkHold = 0.13; this.blinkNext = 2.2 + Math.random() * 3.2; }
+    if (this.blinkHold > 0) this.blinkHold -= dt;
+    const eyes = this.char.userData.eyes as THREE.Mesh[] | undefined;
+    if (eyes) { const eyeY = this.blinkHold > 0 ? 0.12 : 1; eyes.forEach(e => { e.scale.y += (eyeY - e.scale.y) * 0.6; }); }
+    // facing, joyful 360° spin on big finds, or a slow look-around when idle
+    let rotY = this.facing > 0 ? 0.25 : -0.25;
+    if (this.celebrateT > 0) {
+      this.celebrateT = Math.max(0, this.celebrateT - dt * 1.1);
+      if (!this.reduceMotion) rotY += (1 - this.celebrateT) * Math.PI * 2;
+    } else if (this.idleT > 4 && !this.reduceMotion) {
+      const ease = Math.min(1, (this.idleT - 4) / 1.5);
+      rotY = rotY * (1 - ease * 0.5) + Math.sin((this.idleT - 4) * 0.7) * 0.5 * ease;
+    }
+    this.char.rotation.y = rotY;
+    // greeting wiggle on level start (antenna bulb glows a touch brighter too)
+    if (this.greetT > 0) { this.greetT = Math.max(0, this.greetT - dt); this.char.rotation.z = Math.sin(this.greetT * 9) * 0.1 * (this.greetT / 1.4) * (this.reduceMotion ? 0.4 : 1); }
+    else this.char.rotation.z = 0;
+    ((this.char.userData.bulb as THREE.Mesh).material as THREE.MeshStandardMaterial).emissiveIntensity = 0.6 + Math.sin(clock.elapsedTime * 2) * 0.3 + (this.greetT > 0 ? 0.35 : 0);
 
     if (this.levelType === 'vertical') {
       // follow upward; keep x centered, pull camera back a touch so the climb reads

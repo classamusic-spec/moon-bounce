@@ -96,6 +96,10 @@ export interface Planet {
   powerBox?: number;
   /** [x, heightAboveGround] secret power cache (reachable using the power). */
   powerCache?: [number, number];
+  /** [x, heightAboveGround] hidden star cluster — collect all 4 for a
+   *  Star-Finder sticker + bonus stars. Placed to need the planet's mechanic
+   *  (a brave jump, a cloud, a frozen bridge, a bubble boost…). */
+  secret?: [number, number];
 }
 
 // ---------- Runtime entity types ----------
@@ -116,6 +120,8 @@ export interface StarItem {
   vy?: number;
   /** A secret power cache: awards a Power-Master sticker + bonus stars. */
   cache?: boolean;
+  /** Part of the hidden star cluster (all collected → Star-Finder sticker). */
+  secret?: boolean;
 }
 
 export interface FactBox {

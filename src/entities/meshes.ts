@@ -15,7 +15,9 @@ export function makeCharacter(): THREE.Group {
   visor.position.set(0, 0.1, 0.42); visor.rotation.x = 0.3; char.add(visor);
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.5 });
   const pup = new THREE.MeshStandardMaterial({ color: 0x223044 });
-  [-0.15, 0.15].forEach(x => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 16), eyeMat); e.position.set(x, 0.15, 0.78); char.add(e); const p = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 12), pup); p.position.set(x, 0.13, 0.85); char.add(p); });
+  const eyes: THREE.Mesh[] = []; // whites + pupils, so the blob can blink
+  [-0.15, 0.15].forEach(x => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 16), eyeMat); e.position.set(x, 0.15, 0.78); char.add(e); eyes.push(e); const p = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 12), pup); p.position.set(x, 0.13, 0.85); char.add(p); eyes.push(p); });
+  char.userData.eyes = eyes;
   const smile = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.03, 12, 24, Math.PI), new THREE.MeshStandardMaterial({ color: 0x223044 }));
   smile.position.set(0, -0.02, 0.78); smile.rotation.z = Math.PI; char.add(smile);
   // Antenna + bulb live in a group so a hat can hide them when worn.

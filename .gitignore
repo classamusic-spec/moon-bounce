@@ -17,3 +17,4 @@ yarn-error.log*
 # Scratch / temp scripts
 _*.mjs
 _debug-shots/
+secret-cluster.png

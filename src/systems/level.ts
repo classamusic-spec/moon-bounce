@@ -270,6 +270,21 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
   sg.position.set(sunX, sunY, 0); scene.add(sg);
   game.sunPiece = { group: sg, mesh: sunMesh, glow: glow, y: sunY };
 
+  // Hidden star cluster — 4 pale-blue "hidden starlight" stars in a diamond,
+  // marked by a faint shimmer ring. Collect all 4 for a Star-Finder sticker.
+  if (P.secret) {
+    const [hx, hy] = P.secret; const cy = GROUND_Y + hy;
+    ([[0, 0.9], [-0.9, 0], [0.9, 0], [0, -0.9]] as [number, number][]).forEach(([ox, oy]) => {
+      const m = makeStarMesh(0.85, false);
+      const mat = m.material as THREE.MeshStandardMaterial;
+      mat.color.setHex(0xcfe8ff); mat.emissive.setHex(0x88aaff); mat.emissiveIntensity = 0.8;
+      m.position.set(hx + ox, cy + oy, 0); m.userData.bob = Math.random() * Math.PI * 2;
+      scene.add(m); game.starItems.push({ mesh: m, base: cy + oy, alive: true, secret: true });
+    });
+    const hint = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.05, 8, 40), new THREE.MeshBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0.16 }));
+    hint.position.set(hx, cy, -0.6); scene.add(hint); game.decor.push(hint);
+  }
+
   // Secret power cache — a glowing reward placed where the power can reach it.
   if (P.powerCache) {
     const [cx, cy] = P.powerCache; const cyAbs = GROUND_Y + cy;

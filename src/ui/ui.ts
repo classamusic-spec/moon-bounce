@@ -2,7 +2,7 @@ import { PLANETS } from '../data/planets';
 import { MOONS, moonForPlanet } from '../data/moons';
 import type { Moon } from '../data/moons';
 import { FLIGHT_SECONDS } from '../core/constants';
-import { planetStickerId, masterStickerId, SOLAR_STICKER } from '../systems/storage';
+import { planetStickerId, masterStickerId, secretStickerId, SOLAR_STICKER } from '../systems/storage';
 import type { CosmeticSlot } from '../systems/storage';
 import { COLORS, HATS, colorById, hatById } from '../data/cosmetics';
 import type { ColorCosmetic, HatCosmetic } from '../data/cosmetics';
@@ -163,6 +163,15 @@ export class UI {
         s.className = 'sticker ' + (earned ? 'earned' : 'locked');
         s.textContent = earned ? (powerEmoji[P.power] || '⭐') : '·';
         s.title = earned ? P.name + ' — Power Master!' : P.name + ' — find the secret power cache';
+        shelf.appendChild(s);
+      });
+      PLANETS.forEach((P, i) => {
+        if (!P.secret) return;
+        const s = document.createElement('div');
+        const earned = storage.hasSticker(secretStickerId(i));
+        s.className = 'sticker ' + (earned ? 'earned' : 'locked');
+        s.textContent = earned ? '🔭' : '·';
+        s.title = earned ? P.name + ' — Star Finder!' : P.name + ' — find the hidden star cluster';
         shelf.appendChild(s);
       });
       const fin = document.createElement('div');

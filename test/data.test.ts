@@ -86,6 +86,30 @@ describe('PLANETS integrity', () => {
     }
   });
 
+  it('gives every planet a hidden star cluster in a reachable spot', () => {
+    for (const p of PLANETS) {
+      expect(p.secret, `${p.name} is missing a secret cluster`).toBeTruthy();
+      const [sx, sy] = p.secret!;
+      if (p.terrain.type === 'vertical') {
+        expect(Math.abs(sx), `${p.name}: secret outside the climb`).toBeLessThanOrEqual(9);
+        expect(sy).toBeLessThan((p.terrain.height || 34) - 2);
+      } else {
+        expect(Math.abs(sx)).toBeLessThanOrEqual(LEVEL_LEN / 2 - 2);
+        // reachable: some standing surface + a jump must span the cluster height
+        const jumpHeight = (p.jump * p.jump) / (2 * p.grav);
+        const stands = [1.5, ...(p.terrain.platforms || []).map(pl => pl[1] + 0.95)];
+        expect(Math.max(...stands) + jumpHeight, `${p.name}: secret too high to reach`).toBeGreaterThan(sy + 0.9);
+      }
+    }
+  });
+
+  it('offers at least 2 rotating layouts everywhere (3 on horizontal planets)', () => {
+    for (const p of PLANETS) {
+      const n = 1 + (p.terrain.variants || []).length;
+      expect(n, `${p.name} has too few layout variants`).toBeGreaterThanOrEqual(p.terrain.type === 'horizontal' ? 3 : 2);
+    }
+  });
+
   // CLAUDE.md invariant: vertical climb gaps must stay below jump height.
   it('keeps every vertical climb step below the jump height', () => {
     for (const p of PLANETS) {

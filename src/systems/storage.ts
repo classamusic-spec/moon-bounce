@@ -18,6 +18,8 @@ const FACTS_PER = 5;
 export function planetStickerId(i: number): string { return 'planet-' + i; }
 /** Sticker id for finding a planet's secret power cache (Power Master). */
 export function masterStickerId(i: number): string { return 'master-' + i; }
+/** Sticker id for collecting a planet's hidden star cluster (Star Finder). */
+export function secretStickerId(i: number): string { return 'secret-' + i; }
 /** Sticker id for completing every planet. */
 export const SOLAR_STICKER = 'solar-system';
 
