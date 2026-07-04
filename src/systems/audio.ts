@@ -155,6 +155,8 @@ export class AudioSystem {
 
   private setReplayState(on: boolean): void { if (this.replayBtn) this.replayBtn.classList.toggle('speaking', on); }
 
+  private current: SpeechSynthesisUtterance | null = null;
+
   speak(text: string): void {
     this.lastSpoken = text;
     if (!this.speakOn || !this.ttsSupported || this.calm) return;
@@ -163,9 +165,11 @@ export class AudioSystem {
       const u = new SpeechSynthesisUtterance(text);
       if (this.chosenVoice) u.voice = this.chosenVoice;
       u.rate = this.voiceRate; u.pitch = 1.18; u.volume = 0.95; // slower, gentle, clear for young listeners
-      u.onstart = () => { this.setReplayState(true); this.duckMusic(true); };
-      u.onend = () => { this.setReplayState(false); this.duckMusic(false); };
-      u.onerror = () => { this.setReplayState(false); this.duckMusic(false); };
+      // a cancelled utterance's late onend/onerror must not un-duck the NEW one
+      this.current = u;
+      u.onstart = () => { if (u !== this.current) return; this.setReplayState(true); this.duckMusic(true); };
+      u.onend = () => { if (u !== this.current) return; this.setReplayState(false); this.duckMusic(false); };
+      u.onerror = () => { if (u !== this.current) return; this.setReplayState(false); this.duckMusic(false); };
       speechSynthesis.speak(u);
     } catch (e) { /* ignore */ }
   }
@@ -181,7 +185,11 @@ export class AudioSystem {
     const prev = this.speakOn; this.speakOn = true; this.speak(text); this.speakOn = prev;
   }
 
-  stopSpeak(): void { this.setReplayState(false); if (this.ttsSupported) { try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } } }
+  stopSpeak(): void {
+    // Chrome often skips onend/onerror after cancel() — restore the duck here too
+    this.current = null; this.setReplayState(false); this.duckMusic(false);
+    if (this.ttsSupported) { try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
+  }
 
   toggleSpeak(): void { this.speakOn = !this.speakOn; if (!this.speakOn) this.stopSpeak(); }
 }

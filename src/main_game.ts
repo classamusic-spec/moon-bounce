@@ -6,14 +6,14 @@ import type {
   BouncePad, WindZone, MovingPlat, SunPiece, Fx, GustState, TerrainType,
   PowerBox, Puff, Gap, PowerType, Freezable,
 } from './core/types';
-import { makeCharacter, makeStarMesh, applyBlobCosmetics } from './entities/meshes';
+import { makeCharacter, makeStarMesh, applyBlobCosmetics, disposeObject } from './entities/meshes';
 import { colorById, hatById } from './data/cosmetics';
 import { castPuff, updatePuffs } from './systems/powers';
 import type { Planet } from './core/types';
 import type { Moon } from './data/moons';
 import { AudioSystem } from './systems/audio';
 import { Stage, loadLevel } from './systems/level';
-import { updateDynamics } from './systems/dynamics';
+import { updateDynamics, stepDynamics } from './systems/dynamics';
 import { startFlight, flightShoot, updateFlight } from './systems/flight';
 import { Storage, masterStickerId } from './systems/storage';
 import { UI } from './ui/ui';
@@ -21,6 +21,11 @@ import { UI } from './ui/ui';
 // The Game: owns all mutable state, input, the physics step, and the main loop.
 // Ported faithfully from the prototype's globals + animate()/physics functions.
 const PHYS_STEP = 1 / 60;
+// Fall-speed cap: keeps every landing inside the 0.5-unit catch window (no
+// tunneling through platforms) and reads gentler — on brand for this game.
+const MAX_FALL = 0.42;
+// Sparkle particles share one geometry (they differ only by material color).
+const FX_GEO = new THREE.SphereGeometry(0.07, 8, 6);
 
 export class Game {
   readonly stage: Stage;
@@ -101,6 +106,8 @@ export class Game {
   bonusShown = false;
   reduceMotion = false;
   assist = false;
+  /** Paused-aware world clock (seconds); drives stepped sinusoid motion. */
+  worldT = 0;
   private acc = 0;
 
   constructor(container: HTMLElement) {
@@ -174,7 +181,7 @@ export class Game {
     this.audio.resume(); this.ui.fadeTransition();
     // make sure we're cleanly in platformer mode
     if (this.mode === 'flight') {
-      if (this.flight) { try { this.flight.fscene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry && m.geometry.dispose) m.geometry.dispose(); }); } catch (e) { /* ignore */ } this.flight = null; }
+      if (this.flight) { if (this.flight.arriveTimer) clearTimeout(this.flight.arriveTimer); try { disposeObject(this.flight.fscene); } catch (e) { /* ignore */ } this.flight = null; }
       this.stage.scene.visible = true; this.mode = 'platformer';
       this.ui.byId('flightHud').classList.remove('show');
       this.ui.byId('flightControls').style.display = 'none';
@@ -202,7 +209,8 @@ export class Game {
     this.ui.fadeTransition();
     const parent = this.currentMoon ? this.currentMoon.parent : this.pIndex;
     this.pIndex = parent; this.audio.pIndex = parent;
-    this.loadLevel(parent, true); this.paused = false;
+    // hold the world still under the map (goToPlanet/goToMoon unpause on the way out)
+    this.loadLevel(parent, true); this.paused = true;
     this.ui.buildGalaxyMap(this, i => this.goToPlanet(i), m => this.goToMoon(m));
     this.ui.byId('select').classList.add('show');
   }
@@ -225,7 +233,7 @@ export class Game {
   spawnFx(pos: THREE.Vector3, color: number, n?: number): void {
     n = Math.max(1, Math.round((n || 10) * (this.reduceMotion ? 0.4 : 1)));
     for (let i = 0; i < n; i++) {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 }));
+      const m = new THREE.Mesh(FX_GEO, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 }));
       m.position.copy(pos); this.stage.scene.add(m);
       this.fx.push({ mesh: m, v: new THREE.Vector3((Math.random() - 0.5) * 0.16, (Math.random() - 0.05) * 0.2, (Math.random() - 0.5) * 0.16), life: 1 });
     }
@@ -301,11 +309,32 @@ export class Game {
     this.factQueue = null;
   }
 
+  /** Advance gameplay-relevant world motion by one fixed step: moving
+   *  platforms, rollers, waddling aliens, reward stars, star pickup, puffs.
+   *  Lives inside the physics step so it is frame-rate independent AND holds
+   *  still while a fact card or menu has the game paused. */
+  private stepWorld(): void {
+    const sp = this.calm ? 0.55 : 1;
+    this.worldT += PHYS_STEP;
+    stepDynamics(this, sp);
+    // waddling aliens
+    this.enemies.forEach(e => { if (!e.alive) return; e.group.position.x += e.dir * 0.012 * sp * (this.calm ? 0.6 : 1); if (Math.abs(e.group.position.x - e.home) > e.range) e.dir *= -1; });
+    // reward stars pop up then settle; any touched star is collected
+    this.starItems.forEach(s => {
+      if (!s.alive) return;
+      if (s.reward) { s.vy! -= 0.012; s.mesh.position.y += s.vy!; if (s.mesh.position.y <= s.base) { s.vy = 0; s.mesh.position.y = s.base; } }
+      if (Math.hypot(this.charPos.x - s.mesh.position.x, this.charPos.y - s.mesh.position.y) < CHAR_R + 0.45) this.collectStar(s);
+    });
+    // elemental puffs (travel + gentle transforms)
+    updatePuffs(this, sp);
+  }
+
   /** Fixed-timestep physics: one 1/60s step (run N times per frame). */
   private stepPhysics(): void {
     const scene = this.stage.scene;
     if (this.hitCooldown > 0) this.hitCooldown--;
     if (this.started && !this.paused) {
+      this.stepWorld();
       let dir = 0; if (this.move.left) dir -= 1; if (this.move.right) dir += 1;
       let targetVx = dir * MOVE_SPEED * (this.calm ? 0.7 : 1) * (this.assist ? 0.78 : 1);
 
@@ -328,8 +357,21 @@ export class Game {
         else { this.vel.x = targetVx; this.charSlide = targetVx; }
         if (dir !== 0) this.facing = dir;
       }
+      const prevX = this.charPos.x;
       this.charPos.x += this.vel.x; this.charPos.x = Math.max(this.levelMinX, Math.min(this.levelMaxX, this.charPos.x));
-      this.vel.y -= this.level.grav * (this.calm ? 0.7 : 1) * (this.assist ? 0.85 : 1); this.charPos.y += this.vel.y * (this.calm ? 0.7 : 1);
+      this.vel.y -= this.level.grav * (this.calm ? 0.7 : 1) * (this.assist ? 0.85 : 1);
+      if (this.vel.y < -MAX_FALL) this.vel.y = -MAX_FALL; // gentle terminal fall (also prevents landing tunneling)
+      this.charPos.y += this.vel.y * (this.calm ? 0.7 : 1);
+      // pit sides are solid: while down inside a gap you can't slide out through
+      // the ground (which used to teleport the blob up through the surface)
+      if (this.levelType !== 'vertical') {
+        for (const g of this.gaps) {
+          if (prevX >= g.x0 && prevX <= g.x1 && this.charPos.y < this.groundAt(prevX) + CHAR_R - 0.4) {
+            this.charPos.x = Math.max(g.x0 + 0.25, Math.min(g.x1 - 0.25, this.charPos.x));
+            break;
+          }
+        }
+      }
 
       // ground height: vertical levels have a tiny base only near the middle; horizontal use groundAt
       let groundTop: number;
@@ -415,13 +457,15 @@ export class Game {
     stage.parallaxMid.position.x = camera.position.x * 0.25;
     stage.parallaxMid.position.y = this.levelType === 'vertical' ? camera.position.y * 0.2 : 0;
 
-    this.starItems.forEach(s => { if (!s.alive) return; s.mesh.rotation.y += 0.02 * sp; s.mesh.rotation.z += 0.008 * sp; if (s.reward) { s.vy! -= 0.012; s.mesh.position.y += s.vy!; if (s.mesh.position.y <= s.base) { s.vy = 0; s.mesh.position.y = s.base; } } else { s.mesh.position.y = s.base + Math.sin(clock.elapsedTime * 0.9 + s.mesh.userData.bob) * 0.2 * (this.calm ? 0.4 : 1); } if (Math.hypot(this.charPos.x - s.mesh.position.x, this.charPos.y - s.mesh.position.y) < CHAR_R + 0.45) this.collectStar(s); });
+    // (star fall + pickup moved into the fixed physics step; this is just spin/bob)
+    this.starItems.forEach(s => { if (!s.alive) return; s.mesh.rotation.y += 0.02 * sp; s.mesh.rotation.z += 0.008 * sp; if (!s.reward) { s.mesh.position.y = s.base + Math.sin(clock.elapsedTime * 0.9 + s.mesh.userData.bob) * 0.2 * (this.calm ? 0.4 : 1); } });
 
     this.factBoxes.forEach(b => { b.bounce *= 0.85; b.group.position.y = b.baseY + (b.used ? 0 : Math.sin(clock.elapsedTime * 1.5 + b.x) * 0.06 * (this.calm ? 0.4 : 1)) + b.bounce; (b.group.userData.cube as THREE.Mesh).rotation.y += 0.005 * sp; });
 
     if (this.powerBox && !this.powerBox.used) { const pb = this.powerBox; pb.group.position.y = pb.baseY + Math.sin(clock.elapsedTime * 1.6 + pb.x) * 0.12 * (this.calm ? 0.4 : 1); (pb.group.userData.cube as THREE.Mesh).rotation.y += 0.02 * sp; }
 
-    this.enemies.forEach(e => { if (e.alive) { e.group.position.x += e.dir * 0.012 * sp * (this.calm ? 0.6 : 1); if (Math.abs(e.group.position.x - e.home) > e.range) e.dir *= -1; e.group.rotation.y = e.dir > 0 ? 0.3 : -0.3; e.group.position.y = e.baseY + Math.abs(Math.sin(clock.elapsedTime * 4 + e.home)) * 0.08 * (this.calm ? 0.4 : 1); } else { e.squish += (0.1 - e.squish) * 0.2; (e.group.userData.body as THREE.Mesh).scale.set(1.4, Math.max(0.1, e.squish), 1.4); e.group.position.y = e.baseY - 0.3; } });
+    // (alien walking moved into the fixed physics step; this is facing/bob/squish)
+    this.enemies.forEach(e => { if (e.alive) { e.group.rotation.y = e.dir > 0 ? 0.3 : -0.3; e.group.position.y = e.baseY + Math.abs(Math.sin(clock.elapsedTime * 4 + e.home)) * 0.08 * (this.calm ? 0.4 : 1); } else { e.squish += (0.1 - e.squish) * 0.2; (e.group.userData.body as THREE.Mesh).scale.set(1.4, Math.max(0.1, e.squish), 1.4); e.group.position.y = e.baseY - 0.3; } });
 
     if (this.sunPiece) {
       this.sunPiece.mesh.rotation.y += 0.02 * sp; this.sunPiece.group.position.y = this.sunPiece.y + Math.sin(clock.elapsedTime * 1.1) * 0.18 * (this.calm ? 0.4 : 1); this.sunPiece.glow.scale.setScalar(1 + Math.sin(clock.elapsedTime * 2) * 0.08);
@@ -430,9 +474,8 @@ export class Game {
       else { if (tip) tip.textContent = '▶'; const gap = this.sunPiece.group.position.x - this.charPos.x; if (this.started && !this.paused && Math.abs(gap) > 6) { arrow.classList.add('show'); arrow.classList.toggle('flip', gap < 0); } else { arrow.classList.remove('show'); } }
     }
 
-    // --- animate dynamic elements ---
+    // --- animate dynamic elements (visual-only; gameplay motion is stepped) ---
     updateDynamics(this, sp);
-    updatePuffs(this, sp);
 
     // particle FX: drift, settle, and fade out (collect/pop/squish sparkles)
     this.fx.forEach(f => {
@@ -440,7 +483,7 @@ export class Game {
       f.v.y -= 0.011 * sp; f.v.multiplyScalar(0.96);
       f.life -= 0.05 * sp;
       (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life);
-      if (f.life <= 0) scene.remove(f.mesh);
+      if (f.life <= 0) { scene.remove(f.mesh); (f.mesh.material as THREE.Material).dispose(); }
     });
     this.fx = this.fx.filter(f => f.life > 0);
 

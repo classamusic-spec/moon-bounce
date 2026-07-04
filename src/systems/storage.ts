@@ -1,5 +1,5 @@
 import { PLANETS } from '../data/planets';
-import { colorById, hatById, freeOwnedIds } from '../data/cosmetics';
+import { COLORS, HATS, colorById, hatById, freeOwnedIds } from '../data/cosmetics';
 
 // Persistent save. Versioned so features can extend the shape without wiping a
 // child's progress. localStorage may be unavailable (private mode, embedded
@@ -135,13 +135,17 @@ function read(): SaveV4 {
     const raw = localStorage.getItem(KEY);
     if (!raw) return makeDefault();
     const d = JSON.parse(raw) as Record<string, unknown>;
-    if (!d || (d.v !== 1 && d.v !== 2 && d.v !== 3 && d.v !== 4)) return makeDefault();
+    // Accept any numeric version >= 1: older saves migrate forward, and a save
+    // written by a NEWER app version is normalized field-wise rather than
+    // wiped (a version rollback must never reset a child's progress).
+    if (!d || typeof d.v !== 'number' || d.v < 1) return makeDefault();
     // Fields are shared across versions; missing ones fall back to defaults,
     // so older saves migrate forward without losing progress.
     const eq = (d.equipped && typeof d.equipped === 'object') ? d.equipped as Record<string, unknown> : {};
     const owned = new Set<string>([...freeOwnedIds(), ...stringArray(d.owned)]);
-    const equippedColor = typeof eq.color === 'string' && owned.has(eq.color) ? eq.color : COLORS_DEFAULT;
-    const equippedHat = typeof eq.hat === 'string' && owned.has(eq.hat) ? eq.hat : HAT_DEFAULT;
+    const inCatalog = (slot: CosmeticSlot, id: string) => (slot === 'color' ? COLORS : HATS).some(c => c.id === id);
+    const equippedColor = typeof eq.color === 'string' && owned.has(eq.color) && inCatalog('color', eq.color) ? eq.color : COLORS_DEFAULT;
+    const equippedHat = typeof eq.hat === 'string' && owned.has(eq.hat) && inCatalog('hat', eq.hat) ? eq.hat : HAT_DEFAULT;
     return {
       v: 4,
       lastPlanet: clampIndex(d.lastPlanet),
@@ -232,9 +236,10 @@ export class Storage {
     return true;
   }
 
-  /** Equip an owned cosmetic into a slot. */
+  /** Equip an owned cosmetic into a slot (the id must belong to that slot's catalog). */
   equip(slot: CosmeticSlot, id: string): void {
     if (!this.owns(id)) return;
+    if (!(slot === 'color' ? COLORS : HATS).some(c => c.id === id)) return;
     this.data.equipped[slot] = id;
     this.persist();
   }

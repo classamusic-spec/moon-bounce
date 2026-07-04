@@ -30,7 +30,8 @@ export function makeCharacter(): THREE.Group {
   return char;
 }
 
-function disposeObject(o: THREE.Object3D): void {
+/** Free the GPU resources of an object tree (geometries + materials). */
+export function disposeObject(o: THREE.Object3D): void {
   o.traverse(n => {
     const m = n as THREE.Mesh;
     if (m.geometry) m.geometry.dispose();

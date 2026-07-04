@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { LEVEL_LEN, GROUND_Y, CHAR_R } from '../core/constants';
 import type { Planet } from '../core/types';
-import { makeStarMesh, makeFactBox, makeEnemy, makePowerBox, makeGapCushion } from '../entities/meshes';
+import { makeStarMesh, makeFactBox, makeEnemy, makePowerBox, makeGapCushion, disposeObject } from '../entities/meshes';
 import { buildDynamics } from './dynamics';
 import { powerTint } from './powers';
 import type { Game } from '../main_game';
@@ -84,26 +84,32 @@ export class Stage {
 
 export function clearLevel(game: Game): void {
   const s = game.stage.scene;
-  if (game.groundGroup) s.remove(game.groundGroup);
-  game.platforms.forEach(p => s.remove(p.mesh)); game.platforms = [];
-  game.starItems.forEach(st => s.remove(st.mesh)); game.starItems = [];
-  game.factBoxes.forEach(b => s.remove(b.group)); game.factBoxes = [];
-  game.enemies.forEach(e => s.remove(e.group)); game.enemies = [];
-  game.bouncePads.forEach(b => s.remove(b.mesh)); game.bouncePads = [];
-  game.movers.forEach(m => s.remove(m.mesh)); game.movers = [];
-  game.rollers.forEach(r => s.remove(r.mesh)); game.rollers = [];
-  game.bubbles.forEach(b => s.remove(b.mesh)); game.bubbles = [];
-  game.movingPlats.forEach(m => s.remove(m.mesh)); game.movingPlats = [];
-  game.decor.forEach(d => s.remove(d)); game.decor = [];
+  // remove from the scene AND free geometries/materials — levels are rebuilt
+  // constantly and un-disposed GPU buffers add up fast on low-end phones
+  const kill = (o: THREE.Object3D) => { s.remove(o); disposeObject(o); };
+  if (game.groundGroup) kill(game.groundGroup);
+  game.platforms.forEach(p => kill(p.mesh)); game.platforms = [];
+  game.starItems.forEach(st => kill(st.mesh)); game.starItems = [];
+  game.factBoxes.forEach(b => kill(b.group)); game.factBoxes = [];
+  game.enemies.forEach(e => kill(e.group)); game.enemies = [];
+  game.bouncePads.forEach(b => kill(b.mesh)); game.bouncePads = [];
+  game.movers.forEach(m => kill(m.mesh)); game.movers = [];
+  game.rollers.forEach(r => kill(r.mesh)); game.rollers = [];
+  game.bubbles.forEach(b => kill(b.mesh)); game.bubbles = [];
+  game.movingPlats.forEach(m => kill(m.mesh)); game.movingPlats = [];
+  game.decor.forEach(d => kill(d)); game.decor = [];
   game.windZones = [];
   game.gaps = [];
-  game.puffs.forEach(p => s.remove(p.mesh)); game.puffs = []; game.puffCd = 0;
-  game.freezables.forEach(f => { if (!f.frozen) s.remove(f.mesh); }); game.freezables = [];
-  if (game.powerBox) { s.remove(game.powerBox.group); game.powerBox = null; }
-  if (game.windParticles) { s.remove(game.windParticles); game.windParticles = null; }
-  if (game.sunPiece) { s.remove(game.sunPiece.group); game.sunPiece = null; }
+  game.puffs.forEach(p => kill(p.mesh)); game.puffs = []; game.puffCd = 0;
+  game.freezables.forEach(f => { if (!f.frozen) kill(f.mesh); }); game.freezables = [];
+  // leftover sparkles from the old level (they share a geometry — material only)
+  game.fx.forEach(f => { s.remove(f.mesh); (f.mesh.material as THREE.Material).dispose(); }); game.fx = [];
+  game.hitCooldown = 0;
+  if (game.powerBox) { kill(game.powerBox.group); game.powerBox = null; }
+  if (game.windParticles) { kill(game.windParticles); game.windParticles = null; }
+  if (game.sunPiece) { kill(game.sunPiece.group); game.sunPiece = null; }
   const mid = game.stage.parallaxMid;
-  while (mid.children.length) mid.remove(mid.children[0]!);
+  while (mid.children.length) { const c = mid.children[0]!; mid.remove(c); disposeObject(c); }
 }
 
 // Build a level from a level definition (a Planet or a Moon — same shape).
@@ -158,11 +164,13 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
 
     // fact boxes spread evenly up the climb (5 boxes across the whole height)
     const climb = T.climb || []; const N = climb.length;
-    const boxIdx = [0.12, 0.30, 0.50, 0.70, 0.88].map(f => Math.min(N - 1, Math.max(1, Math.round(f * (N - 1)))));
-    boxIdx.forEach((k, idx) => { const c = climb[k]!; const g = makeFactBox(); const bx = c[0] + (idx % 2 ? 2.0 : -2.0); const by = GROUND_Y + c[1] + 1.6; g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, factIndex: idx, bounce: 0 }); });
+    if (N >= 2) {
+      const boxIdx = [0.12, 0.30, 0.50, 0.70, 0.88].map(f => Math.min(N - 1, Math.max(1, Math.round(f * (N - 1)))));
+      boxIdx.forEach((k, idx) => { const c = climb[k]!; const g = makeFactBox(); const bx = c[0] + (idx % 2 ? 2.0 : -2.0); const by = GROUND_Y + c[1] + 1.6; g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, factIndex: idx, bounce: 0 }); });
 
-    // enemies on ledges spread up the climb
-    [0.18, 0.40, 0.62, 0.82].map(f => Math.min(N - 1, Math.max(1, Math.round(f * (N - 1))))).forEach(k => { const c = climb[k]!; const g = makeEnemy(P.enemy); g.position.set(c[0], GROUND_Y + c[1] + 0.5, 0); scene.add(g); game.enemies.push({ group: g, baseY: GROUND_Y + c[1] + 0.5, dir: Math.random() < 0.5 ? -1 : 1, range: 1.2, home: c[0], alive: true, squish: 1, onPlat: c[0] }); });
+      // enemies on ledges spread up the climb
+      [0.18, 0.40, 0.62, 0.82].map(f => Math.min(N - 1, Math.max(1, Math.round(f * (N - 1))))).forEach(k => { const c = climb[k]!; const g = makeEnemy(P.enemy); g.position.set(c[0], GROUND_Y + c[1] + 0.5, 0); scene.add(g); game.enemies.push({ group: g, baseY: GROUND_Y + c[1] + 0.5, dir: Math.random() < 0.5 ? -1 : 1, range: 1.2, home: c[0], alive: true, squish: 1, onPlat: c[0] }); });
+    }
 
   } else {
     // soft gaps: holes in the ground with a catch cushion below (no fail)
@@ -213,19 +221,23 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
     // mesas (optional)
     (T.mesas || []).forEach(m => { const mesa = new THREE.Mesh(new THREE.BoxGeometry(6, 1.4, 5), bmat); mesa.position.set(m[0], GROUND_Y + m[1], -0.3); groundGroup.add(mesa); game.platforms.push({ mesh: mesa, x: m[0], y: GROUND_Y + m[1], w: 6, top: GROUND_Y + m[1] + 0.7 }); });
     game.levelMinX = -LEVEL_LEN / 2 + 2.2; game.levelMaxX = LEVEL_LEN / 2 + 1;
+    // steps terrain only builds ground up to the last step — don't let the
+    // blob walk past it onto invisible ground
+    if (T.steps && T.steps.length) game.levelMaxX = Math.min(game.levelMaxX, T.steps[T.steps.length - 1]![1] - 0.3);
     scene.add(groundGroup);
 
     // platforms from terrain data
     (T.platforms || []).forEach(d => { const w = 2.6 + Math.random() * 0.6; const plat = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, 2.2), platMat); plat.position.set(d[0], GROUND_Y + d[1], 0); scene.add(plat); game.platforms.push({ mesh: plat, x: d[0], y: GROUND_Y + d[1], w: w, top: GROUND_Y + d[1] + 0.25 }); });
 
-    // stars follow ground height
-    [-42, -39, -36, -33, -30, -27, -24, -21, -18, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42].forEach((sx, idx) => { const high = idx % 3 === 0; const gy = groundAt(sx); const sy = gy + (high ? 2.6 : 1.1) + Math.random() * 0.9; const m = makeStarMesh(1, false); m.position.set(sx, sy, 0); m.userData.bob = Math.random() * Math.PI * 2; scene.add(m); game.starItems.push({ mesh: m, base: sy, alive: true }); });
+    // stars follow ground height; over a gap they ride high so they read as a
+    // jump-arc collectible instead of floating at ankle height over the pit
+    [-42, -39, -36, -33, -30, -27, -24, -21, -18, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42].forEach((sx, idx) => { const high = idx % 3 === 0 || inGap(sx); const gy = groundAt(sx); const sy = gy + (high ? 2.6 : 1.1) + Math.random() * 0.9; const m = makeStarMesh(1, false); m.position.set(sx, sy, 0); m.userData.bob = Math.random() * Math.PI * 2; scene.add(m); game.starItems.push({ mesh: m, base: sy, alive: true }); });
 
     // fact boxes above ground
     [-34, -17, 0, 17, 34].forEach((bx, idx) => { const by = groundAt(bx) + 2.5; const g = makeFactBox(); g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, factIndex: idx, bounce: 0 }); });
 
-    // enemies on ground (skip any that would float over a gap)
-    [-38, -24, -10, 6, 22, 38].forEach(ex => { if (inGap(ex)) return; const ey = groundAt(ex) + 0.5; const g = makeEnemy(P.enemy); g.position.set(ex, ey, 0); scene.add(g); game.enemies.push({ group: g, baseY: ey, dir: Math.random() < 0.5 ? -1 : 1, range: 2.0, home: ex, alive: true, squish: 1 }); });
+    // enemies on ground (skip any whose whole ±2 patrol would cross a gap)
+    [-38, -24, -10, 6, 22, 38].forEach(ex => { if (gaps.some(g => ex + 2.0 > g[0] && ex - 2.0 < g[1])) return; const ey = groundAt(ex) + 0.5; const g = makeEnemy(P.enemy); g.position.set(ex, ey, 0); scene.add(g); game.enemies.push({ group: g, baseY: ey, dir: Math.random() < 0.5 ? -1 : 1, range: 2.0, home: ex, alive: true, squish: 1 }); });
   }
 
   // mid-parallax hills + background orb (both level types)

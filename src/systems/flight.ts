@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FLIGHT_SECONDS } from '../core/constants';
 import { PLANETS } from '../data/planets';
-import { makeStarMesh } from '../entities/meshes';
+import { makeStarMesh, disposeObject } from '../entities/meshes';
 import { colorById } from '../data/cosmetics';
 import type { Game } from '../main_game';
 
@@ -91,6 +91,7 @@ export function startFlight(game: Game): void {
     fscene, fcam, rocket, flame, planet, pRing, starf, neb, ground, blob,
     phase: 'intro', introT: 0,
     t: 0, ry: 0, vy: 0, bonusStars: [], asteroids: [], lasers: [], shootCd: 0, autoFire: 0, rocksBlasted: 0, fxList: [], spawnTimer: 0, astTimer: 0, done: false, arriving: false,
+    introBoinged: false, arriveTimer: null,
   };
 
   // pre-seed a few
@@ -116,7 +117,7 @@ function flightSpawnAsteroid(game: Game): void {
 
 export function flightShoot(game: Game): void {
   const flight = game.flight;
-  if (!flight || flight.arriving || flight.shootCd > 0) return;
+  if (!flight || flight.phase !== 'fly' || flight.arriving || flight.shootCd > 0) return;
   flight.shootCd = 0.22; // small cooldown
   const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.7, 8), new THREE.MeshBasicMaterial({ color: 0x9fe8ff }));
   bolt.rotation.z = Math.PI / 2; bolt.position.set(flight.rocket.position.x + 1.2, flight.rocket.position.y, 0);
@@ -139,7 +140,7 @@ function endFlight(game: Game): void {
   (ui.byId('flightArrive').querySelector('.fa-text') as HTMLElement).textContent = tally;
   const fa = ui.byId('flightArrive'); fa.classList.remove('show'); void fa.offsetWidth; fa.classList.add('show');
   if (!game.calm) game.audio.sSun();
-  setTimeout(() => {
+  flight.arriveTimer = setTimeout(() => {
     ui.fadeTransition();
     ui.byId('flightHud').classList.remove('show');
     ui.bySel('.top-bar').style.display = '';
@@ -147,8 +148,8 @@ function endFlight(game: Game): void {
     ui.byId('platControls').style.display = 'flex';
     ui.byId('flightControls').style.display = 'none';
     fa.classList.remove('show');
-    // tear down flight scene
-    if (game.flight) { game.flight.fscene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose && m.geometry.dispose(); }); game.flight = null; }
+    // tear down flight scene (geometries AND materials — no GPU leak per flight)
+    if (game.flight) { try { disposeObject(game.flight.fscene); } catch (e) { /* ignore */ } game.flight = null; }
     game.stage.scene.visible = true;
     game.move.up = false; game.move.down = false; game.move.shoot = false;
     game.mode = 'platformer';
@@ -191,7 +192,7 @@ export function updateFlight(game: Game): void {
       (f.flame.material as THREE.MeshBasicMaterial).opacity = 0.4 + u * 0.5;
       f.flame.scale.set(1 + u * 0.6, 1, 1);
       f.ground.position.y = -2.8 - u * 4; // ground drops away
-      if (!game.calm && T < 1.28) game.audio.sBoing();
+      if (!game.calm && !f.introBoinged) { f.introBoinged = true; game.audio.sBoing(); } // lift-off hop, exactly once
     } else {
       // transition to flight
       f.phase = 'fly';
@@ -206,7 +207,7 @@ export function updateFlight(game: Game): void {
   }
 
   if (!f.arriving) {
-    f.t += dt * sp; // real seconds, frame-rate independent
+    f.t += dt; // TRUE real seconds — the flight is 60s even in Calm Mode (calm slows visuals, not the trip)
     if (f.shootCd > 0) f.shootCd -= dt;
     if (game.move.shoot && f.shootCd <= 0) flightShoot(game); // hold to auto-fire
     const prog = Math.min(1, f.t / FLIGHT_SECONDS);
@@ -215,7 +216,7 @@ export function updateFlight(game: Game): void {
     const fr = dt * 60; // frame factor: 1.0 at 60fps
     // steering: up/down buttons move rocket up/down (slower, gentler)
     let d = 0; if (game.move.up) d += 1; if (game.move.down) d -= 1;
-    f.vy += d * 0.014 * sp * fr; f.vy *= 0.90; f.ry += f.vy * fr; f.ry = Math.max(-3.4, Math.min(3.4, f.ry));
+    f.vy += d * 0.014 * sp * fr; f.vy *= Math.pow(0.90, fr); f.ry += f.vy * fr; f.ry = Math.max(-3.4, Math.min(3.4, f.ry));
     f.rocket.position.y = f.ry; f.rocket.rotation.z = f.vy * 2.0; f.rocket.rotation.x = Math.sin(f.t * 3) * 0.05;
     f.flame.scale.set(1 + Math.sin(f.t * 30) * 0.3, 1, 1); (f.flame.material as THREE.MeshBasicMaterial).opacity = 0.6 + Math.random() * 0.3;
 
@@ -231,9 +232,9 @@ export function updateFlight(game: Game): void {
     f.bonusStars.forEach(m => { m.position.x -= 0.11 * sp * fr; m.rotation.z += m.userData.spin; if (m.position.x > -900 && Math.hypot(m.position.x - f.rocket.position.x, m.position.y - f.rocket.position.y) < 1.2) { flightBurst(game, m.position.clone(), 0xffe9a8); m.position.x = -999; game.smallStars++; game.storage.addStars(1); game.updateHUD(); if (!game.calm) game.audio.sStar(); } });
     f.bonusStars = f.bonusStars.filter(m => { if (m.position.x < -30) { f.fscene.remove(m); return false; } return true; });
 
-    // lasers fly right, pop asteroids
-    f.lasers.forEach(L => { L.mesh.position.x += 0.5 * fr; f.asteroids.forEach(m => { if (m.position.x > -900 && Math.hypot(L.mesh.position.x - m.position.x, L.mesh.position.y - m.position.y) < 0.9) { m.userData.dead = true; L.dead = true; f.rocksBlasted++; if (!game.calm) game.audio.sRock(); flightBurst(game, m.position.clone(), 0x9a9aaa); // popped rock -> a star reward
-      const st = makeStarMesh(0.8, false); st.position.copy(m.position); f.fscene.add(st); f.bonusStars.push(st); st.userData.spin = (Math.random() - 0.5) * 0.05; } }); });
+    // lasers fly right, pop asteroids (one hit per laser, one pop per rock)
+    f.lasers.forEach(L => { if (L.dead) return; L.mesh.position.x += 0.5 * fr; for (const m of f.asteroids) { if (L.dead) break; if (m.userData.dead) continue; if (m.position.x > -900 && Math.hypot(L.mesh.position.x - m.position.x, L.mesh.position.y - m.position.y) < 0.9) { m.userData.dead = true; L.dead = true; f.rocksBlasted++; if (!game.calm) game.audio.sRock(); flightBurst(game, m.position.clone(), 0x9a9aaa); // popped rock -> a star reward
+      const st = makeStarMesh(0.8, false); st.position.copy(m.position); f.fscene.add(st); f.bonusStars.push(st); st.userData.spin = (Math.random() - 0.5) * 0.05; } } });
     f.lasers = f.lasers.filter(L => { if (L.dead || L.mesh.position.x > 30) { f.fscene.remove(L.mesh); return false; } return true; });
 
     // asteroids drift left (slower), gentle bump (nudge rocket, no fail)

@@ -59,6 +59,33 @@ describe('PLANETS integrity', () => {
     }
   });
 
+  it('never seals a gap with a mesa (a gap must stay a real hole)', () => {
+    for (const p of PLANETS) {
+      for (const [mx] of p.terrain.mesas || []) {
+        for (const [g0, g1] of p.terrain.gaps || []) {
+          const overlap = mx + 3 > g0 && mx - 3 < g1; // mesas are 6 wide
+          expect(overlap, `${p.name}: mesa at ${mx} covers gap [${g0},${g1}]`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('keeps the Power Box clear of platforms and of the vertical spawn point', () => {
+    for (const p of PLANETS) {
+      if (p.powerBox === undefined) continue;
+      if (p.terrain.type === 'vertical') {
+        // spawn is (0, base): the box must not auto-grant on the first step (radius 2.1)
+        expect(Math.abs(p.powerBox), `${p.name}: vertical power box too close to spawn`).toBeGreaterThanOrEqual(3);
+        expect(Math.abs(p.powerBox), `${p.name}: vertical power box outside the base`).toBeLessThanOrEqual(9);
+      } else {
+        const allPlats = [...(p.terrain.platforms || []), ...(p.terrain.variants || []).flatMap(v => v.platforms || [])];
+        for (const [px] of allPlats) {
+          expect(Math.abs(px - p.powerBox), `${p.name}: platform at ${px} clips the power box`).toBeGreaterThanOrEqual(2.2);
+        }
+      }
+    }
+  });
+
   // CLAUDE.md invariant: vertical climb gaps must stay below jump height.
   it('keeps every vertical climb step below the jump height', () => {
     for (const p of PLANETS) {

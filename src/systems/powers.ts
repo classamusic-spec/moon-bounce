@@ -53,6 +53,7 @@ export function updatePuffs(game: Game, sp: number): void {
   const scene = game.stage.scene;
   const canSolidify = game.currentPower !== null && SOLIDIFY.includes(game.currentPower);
   game.puffs.forEach(p => {
+    if (p.life <= 0) return;
     p.mesh.position.x += p.vx * sp;
     p.life -= 1;
     p.mesh.rotation.z += 0.25 * sp;
@@ -60,30 +61,34 @@ export function updatePuffs(game: Game, sp: number): void {
     if (core) (core.material as THREE.MeshBasicMaterial).opacity = 0.7 + Math.random() * 0.3;
     // soft element-tinted trail
     if (p.life % 3 === 0 && game.currentPower) game.spawnFx(p.mesh.position, powerTint(game.currentPower), 1);
-    // gently transform a friendly alien into a reward star (themed by power)
-    game.enemies.forEach(e => {
-      if (!e.alive) return;
+    // gently transform a friendly alien into a reward star (themed by power) —
+    // a spent puff (life 0) stops immediately so one puff triggers one effect
+    for (const e of game.enemies) {
+      if (p.life <= 0) break;
+      if (!e.alive) continue;
       if (Math.hypot(p.mesh.position.x - e.group.position.x, p.mesh.position.y - e.group.position.y) < 0.95) {
         game.puffEnemy(e); p.life = 0;
       }
-    });
+    }
     // solidify a spout/cloud into a platform (ice bridge / bubble lift / spark step)
     if (canSolidify) {
-      game.freezables.forEach(f => {
-        if (f.frozen) return;
+      for (const f of game.freezables) {
+        if (p.life <= 0) break;
+        if (f.frozen) continue;
         if (Math.abs(p.mesh.position.x - f.x) < 1.0 && p.mesh.position.y < f.y + 0.9 && p.mesh.position.y > f.y - 3.2) { solidify(game, f); p.life = 0; }
-      });
+      }
     }
     // pop a sun-flare roller into a star too
-    game.rollers.forEach(r => {
-      if (!r.alive || !r.flare) return;
+    for (const r of game.rollers) {
+      if (p.life <= 0) break;
+      if (!r.alive || !r.flare) continue;
       if (Math.hypot(p.mesh.position.x - r.mesh.position.x, p.mesh.position.y - r.mesh.position.y) < 0.95) {
         r.alive = false; scene.remove(r.mesh); game.audio.sRock(); game.spawnFx(r.mesh.position, 0xffd27f, 9);
         const st = makeStarMesh(1, false); st.position.copy(r.mesh.position); st.position.y += 0.3; scene.add(st);
         game.starItems.push({ mesh: st, base: st.position.y, alive: true, reward: true, vy: 0.18 });
         p.life = 0;
       }
-    });
+    }
   });
   game.puffs = game.puffs.filter(p => { if (p.life <= 0) { scene.remove(p.mesh); return false; } return true; });
 }

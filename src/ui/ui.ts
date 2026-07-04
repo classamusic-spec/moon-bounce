@@ -13,6 +13,7 @@ import type { Game } from '../main_game';
 // helpers + bindControls().
 export class UI {
   private settingsReturn = 'menu';
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   byId(id: string): HTMLElement {
     const el = document.getElementById(id);
@@ -298,7 +299,8 @@ export class UI {
     const e = el.querySelector('.b-emoji'); if (e) e.textContent = emoji;
     const t = el.querySelector('.b-text'); if (t) t.textContent = text;
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 2500);
+    if (this.toastTimer) clearTimeout(this.toastTimer); // don't let an old toast's timer cut a new one short
+    this.toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
   }
 
   // ---- the big event-wiring routine ----
@@ -335,6 +337,11 @@ export class UI {
       if (e.key === 'f' || e.key === 'F') { game.castPuff(); }
     });
     addEventListener('keyup', e => { if (e.key === 'ArrowLeft') game.move.left = false; if (e.key === 'ArrowRight') game.move.right = false; if (e.key === 'ArrowUp') game.move.up = false; if (e.key === 'ArrowDown') game.move.down = false; });
+    // losing focus swallows keyup events — release everything so the blob
+    // doesn't walk forever when the window/app is switched away mid-press
+    const releaseAll = () => { game.move.left = game.move.right = game.move.up = game.move.down = game.move.shoot = false; };
+    addEventListener('blur', releaseAll);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
 
     // settings toggles (in the Settings sheet)
     this.byId('setCalm').addEventListener('click', () => { game.toggleCalm(); this.setSettingToggle('setCalmT', game.calm); });
@@ -342,16 +349,25 @@ export class UI {
     this.byId('setRead').addEventListener('click', () => { audio.toggleSpeak(); this.setSettingToggle('setReadT', audio.speakOn); game.storage.setSetting('speakOn', audio.speakOn); });
     this.byId('setMotion').addEventListener('click', () => { game.reduceMotion = !game.reduceMotion; this.setSettingToggle('setMotionT', game.reduceMotion); game.storage.setSetting('reduceMotion', game.reduceMotion); });
     this.byId('setAssist').addEventListener('click', () => { game.assist = !game.assist; this.setSettingToggle('setAssistT', game.assist); game.storage.setSetting('assist', game.assist); });
-    this.byId('setVoice').addEventListener('input', e => { const r = (+(e.target as HTMLInputElement).value) / 100; audio.voiceRate = r; game.storage.setSetting('voiceRate', r); });
-    this.byId('setVol').addEventListener('input', e => { const v = (+(e.target as HTMLInputElement).value) / 100; audio.volume = v; game.storage.setSetting('volume', v); });
+    // sliders: apply live on 'input', persist once on 'change' (dragging fired
+    // dozens of synchronous localStorage writes per second otherwise)
+    this.byId('setVoice').addEventListener('input', e => { audio.voiceRate = (+(e.target as HTMLInputElement).value) / 100; });
+    this.byId('setVoice').addEventListener('change', () => game.storage.setSetting('voiceRate', audio.voiceRate));
+    this.byId('setVol').addEventListener('input', e => { audio.volume = (+(e.target as HTMLInputElement).value) / 100; });
+    this.byId('setVol').addEventListener('change', () => game.storage.setSetting('volume', audio.volume));
     this.byId('replayBtn').addEventListener('click', () => audio.replayFact());
     if (!audio.ttsSupported) { this.byId('replayBtn').classList.add('hidden'); this.byId('setRead').style.display = 'none'; }
     this.byId('factBtn').addEventListener('click', () => game.onFactBtn());
-    this.byId('skipBtn').addEventListener('click', () => { if (game.mode === 'flight' && game.flight && !game.flight.arriving) { game.flight.t = FLIGHT_SECONDS; } });
+    this.byId('skipBtn').addEventListener('click', () => {
+      const f = game.flight;
+      if (game.mode !== 'flight' || !f || f.arriving) return;
+      f.t = FLIGHT_SECONDS;
+      if (f.phase === 'intro') f.introT = 99; // skip works during the intro too (jump straight to arrival)
+    });
     this.byId('winBtn').addEventListener('click', () => location.reload());
 
     // ----- splash / menu / pause navigation -----
-    this.byId('splashTap').addEventListener('click', () => { audio.resume(); this.byId('splash').classList.add('hide'); show('menu'); });
+    // one listener on the whole splash (it contains #splashTap; two would double-fire)
     this.byId('splash').addEventListener('click', () => { audio.resume(); this.byId('splash').classList.add('hide'); show('menu'); });
 
     this.byId('playBtn').addEventListener('click', () => { audio.resume(); hide('menu'); game.started = true; });

@@ -287,6 +287,10 @@ export interface Flight {
   astTimer: number;
   done: boolean;
   arriving: boolean;
+  /** The intro hop sound has played (it must fire exactly once). */
+  introBoinged?: boolean;
+  /** Pending arrival timeout — cleared if the flight is torn down early. */
+  arriveTimer?: ReturnType<typeof setTimeout> | null;
 }
 
 export type Mode = 'platformer' | 'flight';
