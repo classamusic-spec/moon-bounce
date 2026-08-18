@@ -94,15 +94,35 @@ export class AudioSystem {
     if (power === 'ice') this.sIce(); else if (power === 'spark') this.sSpark(); else if (power === 'bubble') this.sBubble(); else this.sFlame();
   }
 
+  /** The drift puff: a soft breath of filtered noise. (This replaces a square-wave
+   *  laser sweep — the harshest sound in the game, and the only one that broke the
+   *  "gentle sounds with a soft attack, no harsh noise" rule.) */
   sLaser(): void {
     if (this.calm || !this.actx || !this.sfxBus || this._volume <= 0) return;
-    const o = this.actx.createOscillator(), g = this.actx.createGain();
-    o.type = 'square'; o.frequency.setValueAtTime(900, this.actx.currentTime);
-    o.frequency.exponentialRampToValueAtTime(300, this.actx.currentTime + 0.12);
-    g.gain.setValueAtTime(0, this.actx.currentTime);
-    g.gain.linearRampToValueAtTime(0.05, this.actx.currentTime + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, this.actx.currentTime + 0.14);
-    o.connect(g); g.connect(this.sfxBus); o.start(); o.stop(this.actx.currentTime + 0.15);
+    const ctx = this.actx, t0 = ctx.currentTime;
+    const len = Math.floor(ctx.sampleRate * 0.22);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1400, t0); lp.frequency.exponentialRampToValueAtTime(420, t0 + 0.2);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.055, t0 + 0.06); // soft attack, never a click
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+    src.connect(lp); lp.connect(g); g.connect(this.sfxBus); src.start(t0); src.stop(t0 + 0.24);
+  }
+
+  /** Pickup chime that walks UP the planet's pentatonic scale as a streak builds,
+   *  so a run of collectibles plays a little tune instead of one repeated beep. */
+  sPickup(streak: number): void {
+    const root = this.ROOTS[this.pIndex % this.ROOTS.length]!;
+    const deg = Math.min(streak, 7);
+    const oct = deg >= this.PENTA.length ? 2 : 1;
+    const f = root * this.PENTA[deg % this.PENTA.length]! * oct;
+    this.tone(f * 2, 0.4, 'sine', 0.075);
+    setTimeout(() => this.tone(f * 3, 0.32, 'sine', 0.035), 50);
   }
 
   // ---- gentle ambient music (per-planet pentatonic arpeggio over a warm pad) ----

@@ -18,3 +18,4 @@ yarn-error.log*
 _*.mjs
 _debug-shots/
 secret-cluster.png
+_shots/

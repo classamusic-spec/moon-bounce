@@ -143,6 +143,8 @@ export interface Enemy {
   alive: boolean;
   squish: number;
   onPlat?: number;
+  /** Which Lumin this is — drives its idle/locomotion animation. */
+  kind?: string;
 }
 
 export interface Mover {

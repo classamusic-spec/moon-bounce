@@ -7,15 +7,18 @@ import type {
   PowerBox, Puff, Gap, PowerType, Freezable,
 } from './core/types';
 import { makeCharacter, makeStarMesh, applyBlobCosmetics, disposeObject } from './entities/meshes';
+import { animateLumin } from './entities/creatures';
+import { propMotion } from './entities/props';
 import { colorById, hatById } from './data/cosmetics';
 import { castPuff, updatePuffs } from './systems/powers';
 import type { Planet } from './core/types';
 import type { Moon } from './data/moons';
 import { AudioSystem } from './systems/audio';
 import { Stage, loadLevel } from './systems/level';
+import type { LevelPlan } from './systems/levelgen';
 import { updateDynamics, stepDynamics } from './systems/dynamics';
 import { startFlight, flightShoot, updateFlight } from './systems/flight';
-import { Storage, masterStickerId, secretStickerId } from './systems/storage';
+import { Storage, masterStickerId, secretStickerId, planetStickerId } from './systems/storage';
 import { UI } from './ui/ui';
 
 // The Game: owns all mutable state, input, the physics step, and the main loop.
@@ -108,6 +111,13 @@ export class Game {
   assist = false;
   /** Paused-aware world clock (seconds); drives stepped sinusoid motion. */
   worldT = 0;
+  /** Pickup streak — a run of collectibles walks up the planet's scale. */
+  streak = 0;
+  lastPickT = -99;
+  /** The beat plan the current horizontal level was built from. */
+  levelPlan: LevelPlan | null = null;
+  /** The end-of-world light sweep, while it is running. */
+  glowWave: { mesh: THREE.Mesh; x: number; from: number; to: number; done: boolean } | null = null;
   private acc = 0;
 
   // ---- blob personality (all purely visual, all gentle) ----
@@ -144,8 +154,17 @@ export class Game {
   }
 
   // ---- system wrappers ----
-  loadLevel(i: number, instant: boolean): void { this.onMoon = false; this.currentMoon = null; loadLevel(this, PLANETS[i]!, instant); this.greetT = 1.4; this.idleT = 0; }
-  loadMoon(moon: Moon): void { this.onMoon = true; this.currentMoon = moon; loadLevel(this, moon, true); this.greetT = 1.4; this.idleT = 0; }
+  loadLevel(i: number, instant: boolean): void {
+    this.onMoon = false; this.currentMoon = null; loadLevel(this, PLANETS[i]!, instant);
+    this.greetT = 1.4; this.idleT = 0;
+    const P = PLANETS[i]!;
+    this.ui.showLevelIntro(P.emoji, P.name, P.terrain.type === 'vertical' ? 'Climb up and wake the Glowseed' : 'Wake the Glowseed');
+  }
+  loadMoon(moon: Moon): void {
+    this.onMoon = true; this.currentMoon = moon; loadLevel(this, moon, true);
+    this.greetT = 1.4; this.idleT = 0;
+    this.ui.showLevelIntro(moon.emoji, moon.name, 'A little sleepy moon — have a look around');
+  }
   startFlight(): void { startFlight(this); }
   flightShoot(): void { flightShoot(this); }
   castPuff(): void { this.idleT = 0; castPuff(this); }
@@ -160,7 +179,10 @@ export class Game {
   }
 
   // ---- HUD / dots ----
-  updateHUD(): void { this.ui.setHUD(this.smallStars, this.boxesFound); }
+  // Shows the PERSISTENT light total, not a per-level counter. The old HUD
+  // reset to 0 on every level load, so the number the child watched grow kept
+  // being wiped in front of them while the total that mattered stayed hidden.
+  updateHUD(): void { this.ui.setHUD(this.storage.stars, this.boxesFound); }
   updatePlanetDots(): void { this.ui.updatePlanetDots(this.pIndex, this.storage.highestUnlocked); }
 
   // ---- player actions ----
@@ -230,7 +252,12 @@ export class Game {
   // ---- rewards / interactions ----
   collectStar(s: StarItem): void {
     if (s.cache) { this.collectCache(s); return; }
-    s.alive = false; this.audio.sStar(); this.spawnFx(s.mesh.position, s.secret ? 0xaaccff : 0xffe9a8); this.stage.scene.remove(s.mesh); this.smallStars++; this.storage.addStars(1); this.updateHUD();
+    s.alive = false;
+    // a run of pickups walks up the planet's scale — movement makes music
+    this.streak = this.worldT - this.lastPickT < 1.5 ? this.streak + 1 : 0;
+    this.lastPickT = this.worldT;
+    this.audio.sPickup(this.streak);
+    this.spawnFx(s.mesh.position, s.secret ? 0xaaccff : 0xffe9a8); this.stage.scene.remove(s.mesh); this.smallStars++; this.storage.addStars(1); this.updateHUD();
     if (s.secret && !this.starItems.some(o => o.alive && o.secret)) this.completeSecret();
   }
 
@@ -297,23 +324,82 @@ export class Game {
     this.starItems.push({ mesh: m, base: m.position.y, alive: true, reward: true, vy: 0.18 });
   }
 
+  /** A soft "excuse me" nudge on side contact. Never damages, never stuns,
+   *  never takes the controls away — it only adds a gentle hop so the touch
+   *  is felt. The cooldown exists purely to stop the sound repeating. */
   bumpBack(): void {
-    if (this.hitCooldown > 0) return; this.hitCooldown = 40; this.audio.sBump(); this.vel.y = Math.max(this.vel.y, 0.22); this.vel.x = -this.facing * 0.18; this.onGround = false;
+    if (this.hitCooldown > 0) return; this.hitCooldown = 24; this.audio.sBump();
+    this.vel.y = Math.max(this.vel.y, 0.20); this.onGround = false;
   }
 
   reachSun(): void {
     if (this.paused) return; this.paused = true; this.audio.sSun(); this.spawnFx(this.sunPiece!.group.position, 0xffd24d, 16);
     if (this.onMoon) { this.reachMoonGoal(); return; }
-    this.factQueue = 'sun'; this.ui.byId('factCard').classList.remove('factbox');
+    this.celebrateT = 1;
+    // The payoff: light runs back across the whole world you just walked,
+    // re-lighting every bud you opened, before anything else happens.
+    this.startGlowWave();
+    this.audio.speak('You woke the Glowseed! ' + this.level.name + ' is glowing again.');
+  }
+
+  /** Kick off the wake sequence — a warm band of light sweeping back along the level. */
+  private startGlowWave(): void {
+    const from = this.sunPiece ? this.sunPiece.group.position.x : this.levelMaxX;
+    const band = new THREE.Mesh(
+      new THREE.PlaneGeometry(5, 26),
+      new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.42, depthWrite: false, blending: THREE.AdditiveBlending }),
+    );
+    band.position.set(from, GROUND_Y + 8, 1.2);
+    this.stage.scene.add(band);
+    this.glowWave = { mesh: band, x: from, from, to: this.levelMinX, done: false };
+  }
+
+  /** Advance the wake sweep (runs even while paused — it IS the pause). */
+  private updateGlowWave(dt: number): void {
+    const w = this.glowWave; if (!w) return;
+    const speed = Math.max(28, (w.from - w.to) / 1.9);
+    w.x -= speed * dt;
+    w.mesh.position.x = w.x;
+    // re-light every bud the wave passes: the level visibly warms up behind it
+    this.factBoxes.forEach(b => {
+      if (!b.used || b.x > w.x || b.group.userData.relit) return;
+      b.group.userData.relit = true;
+      const m = b.group.userData.mat as THREE.MeshStandardMaterial | undefined;
+      if (m) { m.color.setHex(0xffd9a0); m.emissiveIntensity = 0.5; }
+      this.spawnFx(b.group.position, 0xffe6b0, 5);
+    });
+    if (w.x <= w.to && !w.done) {
+      w.done = true;
+      this.stage.scene.remove(w.mesh);
+      (w.mesh.material as THREE.Material).dispose(); w.mesh.geometry.dispose();
+      this.glowWave = null;
+      this.showLevelResults();
+    }
+  }
+
+  /** The end-of-world card: what you did here, before travelling on. */
+  private showLevelResults(): void {
+    const keeps = [planetStickerId(this.pIndex), masterStickerId(this.pIndex), secretStickerId(this.pIndex)]
+      .filter(id => this.storage.hasSticker(id)).length;
+    this.ui.showResults({
+      emoji: this.level.emoji,
+      title: this.level.name + ' is glowing',
+      light: this.smallStars,
+      buds: this.boxesFound,
+      budsTotal: this.level.facts.length,
+      keepsakes: keeps,
+    });
+  }
+
+  /** "Onward" from the results card: travel on, or finish the journey. */
+  onResultsBtn(): void {
+    this.ui.hideResults();
     if (this.pIndex >= PLANETS.length - 1) {
-      setTimeout(() => this.ui.showWin(), 700);
-      this.audio.speak('You collected every Piece of the Sun! You traveled across the whole solar system!');
+      this.ui.showWin();
+      this.audio.speak('You woke every Glowseed! The whole solar system is glowing.');
       return;
     }
-    const nxt = PLANETS[this.pIndex + 1]!;
-    this.ui.prepSunFact(nxt.emoji, 'Next: ' + nxt.name, nxt.fact, !this.audio.ttsSupported || this.calm);
-    setTimeout(() => this.ui.showFact(), 650);
-    this.audio.speak('You found a Piece of the Sun! Next planet: ' + nxt.name + '. ' + nxt.fact);
+    this.startFlight();
   }
 
   /** Reached the treasure at the end of a moon bonus level. */
@@ -377,13 +463,14 @@ export class Game {
       // --- Mercury solar boost: brief speed shimmer ---
       if (this.level.dyn && this.level.dyn!.boost) { this.boostTimer++; if (this.boostTimer % 420 < 60) { targetVx *= 1.35; } }
 
-      if (this.hitCooldown < 30) {
-        if (onIce) { this.charSlide += (targetVx - this.charSlide) * 0.04; this.vel.x = this.charSlide; } // slippery: slow to change
-        else if (this.slippery) { this.charSlide += (targetVx - this.charSlide) * 0.10; this.vel.x = this.charSlide; }
-        else { this.vel.x = targetVx; this.charSlide = targetVx; }
-        if (dir !== 0) this.facing = dir;
-      }
-      const prevX = this.charPos.x;
+      // NOTE: input is never gated. A "hit" used to lock the controls out for
+      // 10 frames, which is a damage-stun with the damage removed — the one
+      // place the game took agency away from the child. It doesn't any more.
+      if (onIce) { this.charSlide += (targetVx - this.charSlide) * 0.04; this.vel.x = this.charSlide; } // slippery: slow to change
+      else if (this.slippery) { this.charSlide += (targetVx - this.charSlide) * 0.10; this.vel.x = this.charSlide; }
+      else { this.vel.x = targetVx; this.charSlide = targetVx; }
+      if (dir !== 0) this.facing = dir;
+      const prevX = this.charPos.x, prevY = this.charPos.y;
       this.charPos.x += this.vel.x; this.charPos.x = Math.max(this.levelMinX, Math.min(this.levelMaxX, this.charPos.x));
       this.vel.y -= this.level.grav * (this.calm ? 0.7 : 1) * (this.assist ? 0.85 : 1);
       if (this.vel.y < -MAX_FALL) this.vel.y = -MAX_FALL; // gentle terminal fall (also prevents landing tunneling)
@@ -411,7 +498,29 @@ export class Game {
       if (this.vel.y <= 0) { this.movingPlats.forEach(mp => { if (Math.abs(this.charPos.x - mp.mesh.position.x) < mp.w / 2 + CHAR_R * 0.5) { const top = mp.mesh.position.y + 0.22 + CHAR_R; if (this.charPos.y <= top && this.charPos.y > top - 0.5) { this.charPos.y = top; this.vel.y = 0; if (!this.onGround) this.squash = 1.2; this.onGround = true; landed = true; if (mp.axis === 'x') { this.charPos.x += mp.dx || 0; } } } }); }
       // mover platforms (clouds, ice chunks)
       if (this.vel.y <= 0) { this.movers.forEach(mv => { if (Math.abs(this.charPos.x - mv.mesh.position.x) < mv.w / 2 + CHAR_R * 0.5) { const top = mv.mesh.position.y + 0.3 + CHAR_R; if (this.charPos.y <= top && this.charPos.y > top - 0.5) { this.charPos.y = top; this.vel.y = 0; if (!this.onGround) this.squash = 1.2; this.onGround = true; landed = true; } } }); }
-      this.factBoxes.forEach(b => { if (Math.abs(this.charPos.x - b.x) < 0.5 + CHAR_R * 0.6) { const top = b.baseY + 0.5 + CHAR_R; if (this.vel.y <= 0 && this.charPos.y <= top && this.charPos.y > top - 0.5) { this.charPos.y = top; this.vel.y = 0; this.onGround = true; landed = true; if (!b.used) this.popBox(b); } const bottom = b.baseY - 0.5 - CHAR_R; if (this.vel.y > 0 && this.charPos.y >= bottom && this.charPos.y < bottom + 0.5) { if (!b.used) this.popBox(b); this.vel.y = -0.05; } } });
+      // Whisperbuds. SWEPT test: a jump moves up to ~0.6 units per step, which
+      // is wider than any fixed hit window — a fixed window let the blob tunnel
+      // straight through a bud without ever touching it. Compare the previous
+      // and current y and catch the crossing instead.
+      this.factBoxes.forEach(b => {
+        if (Math.abs(this.charPos.x - b.x) >= 0.62 + CHAR_R * 0.6) return;
+        const top = b.baseY + 0.5 + CHAR_R;
+        const bottom = b.baseY - 0.5 - CHAR_R;
+        // landing on top of it
+        if (this.vel.y <= 0 && prevY > top - 0.02 && this.charPos.y <= top) {
+          this.charPos.y = top; this.vel.y = 0; this.onGround = true; landed = true;
+          if (!b.used) this.popBox(b);
+          return;
+        }
+        // rising into it from underneath
+        if (this.vel.y > 0 && prevY < bottom + 0.02 && this.charPos.y >= bottom) {
+          if (!b.used) this.popBox(b);
+          this.vel.y = -0.05;
+          return;
+        }
+        // brushing past it sideways at bud height — still a touch, still opens
+        if (!b.used && this.charPos.y > bottom && this.charPos.y < top) this.popBox(b);
+      });
 
       // bounce pads / geysers: launch high
       this.bouncePads.forEach(bp => { if (Math.abs(this.charPos.x - bp.x) < 1.0 && this.charPos.y <= bp.y + CHAR_R + 0.4 && this.vel.y <= 0.05) { this.vel.y = this.level.jump * bp.power + 0.2; this.onGround = false; this.squash = 0.6; this.audio.sBoing(); } });
@@ -488,16 +597,23 @@ export class Game {
     if (this.levelType === 'vertical') {
       // follow upward; keep x centered, pull camera back a touch so the climb reads
       camera.position.x += (0 - camera.position.x) * 0.06;
-      const targetY = this.charPos.y + 1.5; camera.position.y += (targetY - camera.position.y) * 0.07;
+      // never aim below the base platform — otherwise the start of a climb is
+      // mostly a view of the underside of the world
+      const targetY = Math.max(GROUND_Y + 3.4, this.charPos.y + 1.5);
+      camera.position.y += (targetY - camera.position.y) * 0.07;
       camera.position.z += (15 - camera.position.z) * 0.04;
-      camera.lookAt(0, this.charPos.y + 0.5, 0);
+      camera.lookAt(0, Math.max(GROUND_Y + 2.4, this.charPos.y + 0.5), 0);
     } else {
+      // Frame the world, not the dirt: sit the camera higher and aim above the
+      // horizon so the near ground occupies a strip rather than a third of the
+      // screen, and look slightly ahead of the direction of travel.
       const camMinX = -LEVEL_LEN / 2 + 5, camMaxX = LEVEL_LEN / 2 - 5;
-      const tx = Math.max(camMinX, Math.min(camMaxX, this.charPos.x));
-      camera.position.x += (tx - camera.position.x) * 0.08;
-      camera.position.z += (12 - camera.position.z) * 0.04;
-      camera.position.y += ((1.2 + Math.max(0, this.charPos.y - GROUND_Y - 1) * 0.25) - camera.position.y) * 0.06;
-      camera.lookAt(camera.position.x, 0.6, 0);
+      const lead = this.facing * 1.6;
+      const tx = Math.max(camMinX, Math.min(camMaxX, this.charPos.x + lead));
+      camera.position.x += (tx - camera.position.x) * 0.06;
+      camera.position.z += (13.5 - camera.position.z) * 0.04;
+      camera.position.y += ((2.9 + Math.max(0, this.charPos.y - GROUND_Y - 1) * 0.3) - camera.position.y) * 0.06;
+      camera.lookAt(camera.position.x, 1.5, 0);
     }
 
     if (stage.parallaxFar) stage.parallaxFar.position.x = camera.position.x * 0.6;
@@ -522,8 +638,17 @@ export class Game {
       else { if (tip) tip.textContent = '▶'; const gap = this.sunPiece.group.position.x - this.charPos.x; if (this.started && !this.paused && Math.abs(gap) > 6) { arrow.classList.add('show'); arrow.classList.toggle('flip', gap < 0); } else { arrow.classList.remove('show'); } }
     }
 
+    // the end-of-world light sweep runs even while paused — it IS the pause
+    if (this.glowWave) this.updateGlowWave(dt);
+
+    // world props self-animate; keep them inside the sensory-safety rules
+    propMotion.speed = this.calm ? 0.55 : 1;
+    propMotion.enabled = !this.reduceMotion;
+
     // --- animate dynamic elements (visual-only; gameplay motion is stepped) ---
     updateDynamics(this, sp);
+    // Lumin idle/locomotion (visual only — patrol movement is in the physics step)
+    this.enemies.forEach(e => { if (e.alive && e.kind) animateLumin(e.group, clock.elapsedTime, e.dir, true, this.calm, this.reduceMotion); });
 
     // particle FX: drift, settle, and fade out (collect/pop/squish sparkles)
     this.fx.forEach(f => {

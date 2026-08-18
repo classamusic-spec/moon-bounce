@@ -1,10 +1,28 @@
 import * as THREE from 'three';
-import { LEVEL_LEN, GROUND_Y, CHAR_R } from '../core/constants';
+import { LEVEL_LEN, GROUND_Y, CHAR_R, sx } from '../core/constants';
 import type { Planet } from '../core/types';
-import { makeStarMesh, makeFactBox, makeEnemy, makePowerBox, makeGapCushion, disposeObject } from '../entities/meshes';
+import { makeStarMesh, makeFactBox, makePowerBox, makeGapCushion, makePlatform, disposeObject } from '../entities/meshes';
+import { makeLumin, luminsForPlanet, luminBaseOffset } from '../entities/creatures';
+import type { LuminKind } from '../entities/creatures';
+import { makeProp, propsForPlanet, makeSkyline } from '../entities/props';
+import type { PropKind } from '../entities/props';
+import { paletteFrom, rockMat, disposeObject as _disposeShared } from './materials';
+import { generateLevel } from './levelgen';
 import { buildDynamics } from './dynamics';
 import { powerTint } from './powers';
 import type { Game } from '../main_game';
+
+void _disposeShared;
+
+/** Stable per-level seed so a planet and its moon get different layouts. */
+function planIndex(P: Planet): number {
+  let h = 0;
+  for (let i = 0; i < P.name.length; i++) h = (h * 31 + P.name.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+/** Position an object and return it (keeps the builders terse). */
+function pos3<T extends THREE.Object3D>(o: T, x: number, y: number, z: number): T { o.position.set(x, y, z); return o; }
 
 export const CATCH_DROP = 3.0; // how far below ground the gap catch cushion sits
 
@@ -20,6 +38,12 @@ export class Stage {
   parallaxMid: THREE.Group;
   dustPts!: THREE.Points;
 
+  // lighting stack (re-tinted per planet by loadLevel)
+  hemi!: THREE.HemisphereLight;
+  key!: THREE.DirectionalLight;
+  fill!: THREE.DirectionalLight;
+  rim!: THREE.DirectionalLight;
+
   skyTop = new THREE.Color();
   skyBot = new THREE.Color();
   tSkyTop = new THREE.Color();
@@ -34,13 +58,34 @@ export class Stage {
     this.scene.fog = new THREE.FogExp2(0x0a0a1f, 0.016);
     this.camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
     this.camera.position.set(0, 1.2, 12);
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     this.renderer.setSize(innerWidth, innerHeight);
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    // DPR capped at 2 (1.75 on phones) — the single biggest mobile fill-rate win
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 900 ? 1.75 : 2));
+    // Correct colour pipeline + filmic tone mapping: the base of the AAA look.
+    // Exposure is tuned slightly bright — this is a warm, safe, sunny game.
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.18;
+    // Soft shadows ground the hero and the big world anchors.
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(this.renderer.domElement);
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.78));
-    const key = new THREE.DirectionalLight(0xfff0e0, 0.85); key.position.set(4, 8, 6); this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x88aaff, 0.35); rim.position.set(-5, 3, -4); this.scene.add(rim);
+
+    // --- lighting stack: hemisphere ambient + key (shadowed) + fill + rim ---
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0x444466, 0.55);
+    this.scene.add(this.hemi);
+    this.key = new THREE.DirectionalLight(0xfff0e0, 1.15);
+    this.key.position.set(6, 12, 8);
+    this.key.castShadow = true;
+    this.key.shadow.mapSize.set(1024, 1024);
+    this.key.shadow.camera.near = 1; this.key.shadow.camera.far = 60;
+    this.key.shadow.camera.left = -18; this.key.shadow.camera.right = 18;
+    this.key.shadow.camera.top = 18; this.key.shadow.camera.bottom = -18;
+    this.key.shadow.bias = -0.0012; this.key.shadow.normalBias = 0.03;
+    this.scene.add(this.key); this.scene.add(this.key.target);
+    this.fill = new THREE.DirectionalLight(0xbfd4ff, 0.32); this.fill.position.set(-6, 4, 5); this.scene.add(this.fill);
+    this.rim = new THREE.DirectionalLight(0x88aaff, 0.55); this.rim.position.set(-5, 3, -8); this.scene.add(this.rim);
     this.parallaxMid = new THREE.Group();
     this.buildParallax();
     this.clock = new THREE.Clock();
@@ -137,11 +182,22 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
   const groundGroup = game.groundGroup;
   const gmat = new THREE.MeshStandardMaterial({ color: P.ground, roughness: 0.95 });
   const bmat = new THREE.MeshStandardMaterial({ color: P.hill, roughness: 0.95 });
-  const platMat = new THREE.MeshStandardMaterial({ color: P.hill, roughness: 0.8, emissive: 0x111111, emissiveIntensity: 0.1 });
+  // One palette drives every prop, creature accent and effect on this world.
+  const pal = paletteFrom(P.ground, P.hill, P.sky[0], P.sky[1], P.dust);
+  // Re-tint the lighting stack to the planet's sky so each world has its own
+  // time-of-day feel rather than one neutral studio light everywhere.
+  stage.hemi.color.setHex(P.sky[1]); stage.hemi.groundColor.setHex(pal.deep); stage.hemi.intensity = 0.5;
+  stage.key.color.setHex(0xfff2e2); stage.key.intensity = 1.15;
+  stage.fill.color.setHex(P.sky[1]); stage.fill.intensity = 0.3;
+  stage.rim.color.setHex(P.dust); stage.rim.intensity = 0.6;
+
+  // Authored step boundaries are written in the original 95-unit space; the
+  // ground mesh AND the collision height must both use the scaled version.
+  const scaledSteps = T.steps ? T.steps.map(s => [sx(s[0]), sx(s[1]), s[2]] as [number, number, number]) : undefined;
 
   // returns the ground surface height (top Y) at a given x for this terrain
   function groundAt(x: number): number {
-    if (T.steps) { for (const s of T.steps) { if (x >= s[0] && x < s[1]) return GROUND_Y + s[2]; } return GROUND_Y; }
+    if (scaledSteps) { for (const s of scaledSteps) { if (x >= s[0] && x < s[1]) return GROUND_Y + s[2]; } return GROUND_Y; }
     if (T.shape === 'dunes') return GROUND_Y + Math.max(0, Math.sin(x * 0.18) * 0.5 + Math.cos(x * 0.07) * 0.35);
     if (T.shape === 'hills') return GROUND_Y + Math.max(0, Math.sin(x * 0.12)) * 1.1;
     return GROUND_Y;
@@ -150,13 +206,41 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
 
   if (game.levelType === 'vertical') {
     // small base ground; the level goes UP
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(20, 4, 6), gmat); slab.position.set(0, GROUND_Y - 2, -0.5); groundGroup.add(slab);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(20, 4, 6), gmat); slab.position.set(0, GROUND_Y - 2, -0.5); slab.receiveShadow = true; groundGroup.add(slab);
     for (let x = -10; x <= 10; x += 2.2) { const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.3, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x, GROUND_Y, -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
+    // lit front lip so the base doesn't read as one flat slab
+    groundGroup.add(pos3(new THREE.Mesh(new THREE.BoxGeometry(20, 0.3, 0.5), rockMat(new THREE.Color(pal.hill).lerp(new THREE.Color(0xffffff), 0.22).getHex(), { rough: 0.85 })), 0, GROUND_Y - 0.02, 2.72));
     game.levelMinX = -9; game.levelMaxX = 9;
     scene.add(groundGroup);
 
+    // ---- climb scenery: props on the base and drifting alongside the ascent,
+    // so a vertical world is a PLACE rather than ledges in empty sky ----
+    const vKinds = propsForPlanet(P.name);
+    const vr = (() => { let a = planIndex(P) + vIdx * 7717; return () => { a = (a * 1103515245 + 12345) & 0x7fffffff; return a / 0x7fffffff; }; })();
+    for (let i = 0; i < 10; i++) {
+      const px = -11 + vr() * 22;
+      const g = makeProp(vKinds.fg[Math.floor(vr() * vKinds.fg.length)] as PropKind, pal, 0.5 + vr() * 0.7, vr());
+      g.position.set(px, GROUND_Y, 1.4 + vr() * 1.6); scene.add(g); game.decor.push(g);
+    }
+    const top = game.levelHeight;
+    for (let i = 0; i < 26; i++) {
+      const side = vr() < 0.5 ? -1 : 1;
+      const layer = vr() < 0.55 ? 'mid' : 'bg';
+      const kinds = vKinds[layer as 'mid' | 'bg'];
+      const g = makeProp(kinds[Math.floor(vr() * kinds.length)] as PropKind, pal, 1.0 + vr() * 1.6, vr());
+      g.position.set(side * (7 + vr() * 9), GROUND_Y + vr() * top, layer === 'mid' ? -7 - vr() * 5 : -16 - vr() * 8);
+      stage.parallaxMid.add(g);
+    }
+
     // climb platforms
-    (T.climb || []).forEach((c, idx) => { const w = 2.6 + (idx % 2) * 0.4; const plat = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, 2.2), platMat); plat.position.set(c[0], GROUND_Y + c[1], 0); if (T.tilt) plat.rotation.z = (idx % 2 ? 1 : -1) * 0.12; scene.add(plat); game.platforms.push({ mesh: plat, x: c[0], y: GROUND_Y + c[1], w: w, top: GROUND_Y + c[1] + 0.25 }); });
+    (T.climb || []).forEach((c, idx) => {
+      const w = 2.6 + (idx % 2) * 0.4;
+      const plat = makePlatform(w, pal, (idx * 0.29) % 1);
+      plat.position.set(c[0], GROUND_Y + c[1], 0);
+      if (T.tilt) plat.rotation.z = (idx % 2 ? 1 : -1) * 0.12;
+      scene.add(plat);
+      game.platforms.push({ mesh: plat as unknown as THREE.Mesh, x: c[0], y: GROUND_Y + c[1], w: w, top: GROUND_Y + c[1] + 0.31 });
+    });
 
     // stars beside climb platforms + a column up the middle the full height
     (T.climb || []).forEach((c, idx) => { const m = makeStarMesh(1, false); m.position.set(c[0] + (idx % 2 ? 1.6 : -1.6), GROUND_Y + c[1] + 0.9, 0); m.userData.bob = Math.random() * 6; scene.add(m); game.starItems.push({ mesh: m, base: m.position.y, alive: true }); });
@@ -169,12 +253,37 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
       boxIdx.forEach((k, idx) => { const c = climb[k]!; const g = makeFactBox(); const bx = c[0] + (idx % 2 ? 2.0 : -2.0); const by = GROUND_Y + c[1] + 1.6; g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, factIndex: idx, bounce: 0 }); });
 
       // enemies on ledges spread up the climb
-      [0.18, 0.40, 0.62, 0.82].map(f => Math.min(N - 1, Math.max(1, Math.round(f * (N - 1))))).forEach(k => { const c = climb[k]!; const g = makeEnemy(P.enemy); g.position.set(c[0], GROUND_Y + c[1] + 0.5, 0); scene.add(g); game.enemies.push({ group: g, baseY: GROUND_Y + c[1] + 0.5, dir: Math.random() < 0.5 ? -1 : 1, range: 1.2, home: c[0], alive: true, squish: 1, onPlat: c[0] }); });
+      const climbKinds = luminsForPlanet(P.name);
+      [0.18, 0.40, 0.62, 0.82].map(f => Math.min(N - 1, Math.max(1, Math.round(f * (N - 1))))).forEach((k, i) => {
+        const c = climb[k]!;
+        const kind = climbKinds[i % climbKinds.length]!;
+        const ey = GROUND_Y + c[1] + luminBaseOffset(kind);
+        const g = makeLumin(kind, P.enemy, P.sky[1]); g.position.set(c[0], ey, 0); scene.add(g);
+        game.enemies.push({ group: g, baseY: ey, dir: Math.random() < 0.5 ? -1 : 1, range: 1.2, home: c[0], alive: true, squish: 1, onPlat: c[0], kind });
+      });
     }
 
   } else {
+    // ---- plan the level from authored beats (see systems/levelgen.ts) ----
+    // The planet supplies its physics, its signature mechanic and how many soft
+    // gaps it wants; the planner lays out a full arrival->finale sequence across
+    // the (much longer) span and guarantees every placement is reachable.
+    game.levelMinX = -LEVEL_LEN / 2 + 2.2; game.levelMaxX = LEVEL_LEN / 2 + 1;
+    const steps = scaledSteps;
+    if (steps && steps.length) game.levelMaxX = Math.min(game.levelMaxX, steps[steps.length - 1]![1] - 0.3);
+
+    const plan = generateLevel({
+      index: planIndex(P), variant: vIdx,
+      minX: game.levelMinX + 1.5, maxX: game.levelMaxX - 4.5,
+      jump: P.jump, grav: P.grav,
+      gapCount: (T.gaps || []).length,
+      creatureKinds: luminsForPlanet(P.name),
+      propKinds: propsForPlanet(P.name),
+    });
+    game.levelPlan = plan;
+
     // soft gaps: holes in the ground with a catch cushion below (no fail)
-    const gaps = T.gaps || [];
+    const gaps = plan.gaps;
     game.gaps = gaps.map(g => ({ x0: g[0], x1: g[1] }));
     game.catchY = GROUND_Y - CATCH_DROP;
     const inGap = (x: number) => gaps.some(g => x >= g[0] && x <= g[1]);
@@ -189,8 +298,8 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
         if (cur < b) out.push([cur, b]);
         return out;
       };
-      T.steps.forEach(s => {
-        splitOut(s[0], s[1]).forEach(([a, b]) => { const w = b - a; const seg = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 4, 6), gmat); seg.position.set((a + b) / 2, GROUND_Y + s[2] - 2, -0.5); groundGroup.add(seg); });
+      steps!.forEach(s => {
+        splitOut(s[0], s[1]).forEach(([a, b]) => { const w = b - a; const seg = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 4, 6), gmat); seg.position.set((a + b) / 2, GROUND_Y + s[2] - 2, -0.5); seg.receiveShadow = true; groundGroup.add(seg); });
         for (let x = s[0]; x < s[1]; x += 2.4) { if (inGap(x + 1)) continue; const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + 1, GROUND_Y + s[2], -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
       });
     } else {
@@ -203,7 +312,7 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
         for (const g of sorted) { if (g[0] > cursor) segs.push([cursor, g[0]]); cursor = Math.max(cursor, g[1]); }
         if (cursor < maxE) segs.push([cursor, maxE]);
       } else { segs.push([minE, maxE]); }
-      segs.forEach(([a, b]) => { const w = b - a; const slab = new THREE.Mesh(new THREE.BoxGeometry(w, 4, 6), gmat); slab.position.set((a + b) / 2, GROUND_Y - 2, -0.5); groundGroup.add(slab); });
+      segs.forEach(([a, b]) => { const w = b - a; const slab = new THREE.Mesh(new THREE.BoxGeometry(w, 4, 6), gmat); slab.position.set((a + b) / 2, GROUND_Y - 2, -0.5); slab.receiveShadow = true; groundGroup.add(slab); });
       for (let x = -LEVEL_LEN / 2; x <= LEVEL_LEN / 2; x += 2.2) { if (inGap(x)) continue; const gy = groundAt(x); const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + Math.random() * 0.5, gy, -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
     }
     // dark pit recess behind each gap (anchored to the gap's step height so it
@@ -218,42 +327,110 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
       pit.position.set(center, (topY + botY) / 2, -1.4); scene.add(pit); game.decor.push(pit);
       const cu = makeGapCushion(w, P.hill); cu.position.set(center, game.catchY - 0.4, 0); scene.add(cu); game.decor.push(cu);
     });
-    // mesas (optional)
-    (T.mesas || []).forEach(m => { const mesa = new THREE.Mesh(new THREE.BoxGeometry(6, 1.4, 5), bmat); mesa.position.set(m[0], GROUND_Y + m[1], -0.3); groundGroup.add(mesa); game.platforms.push({ mesh: mesa, x: m[0], y: GROUND_Y + m[1], w: 6, top: GROUND_Y + m[1] + 0.7 }); });
-    game.levelMinX = -LEVEL_LEN / 2 + 2.2; game.levelMaxX = LEVEL_LEN / 2 + 1;
-    // steps terrain only builds ground up to the last step — don't let the
-    // blob walk past it onto invisible ground
-    if (T.steps && T.steps.length) game.levelMaxX = Math.min(game.levelMaxX, T.steps[T.steps.length - 1]![1] - 0.3);
+    // mesas (optional) — authored, so scaled into the current span
+    (T.mesas || []).forEach(m => { const mx = sx(m[0]); const mesa = new THREE.Mesh(new THREE.BoxGeometry(6, 1.4, 5), bmat); mesa.position.set(mx, GROUND_Y + m[1], -0.3); mesa.receiveShadow = true; groundGroup.add(mesa); game.platforms.push({ mesh: mesa, x: mx, y: GROUND_Y + m[1], w: 6, top: GROUND_Y + m[1] + 0.7 }); });
     scene.add(groundGroup);
 
-    // platforms from terrain data
-    (T.platforms || []).forEach(d => { const w = 2.6 + Math.random() * 0.6; const plat = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, 2.2), platMat); plat.position.set(d[0], GROUND_Y + d[1], 0); scene.add(plat); game.platforms.push({ mesh: plat, x: d[0], y: GROUND_Y + d[1], w: w, top: GROUND_Y + d[1] + 0.25 }); });
+    // ---- platforms from the beat plan (rest ledges are wider and generous) ----
+    plan.platforms.forEach((d, i) => {
+      const py = groundAt(d.x) + d.h;
+      const plat = makePlatform(d.w, pal, ((i * 0.37) % 1));
+      plat.position.set(d.x, py, 0);
+      scene.add(plat);
+      game.platforms.push({ mesh: plat as unknown as THREE.Mesh, x: d.x, y: py, w: d.w, top: py + 0.31 });
+    });
 
-    // stars follow ground height; over a gap they ride high so they read as a
-    // jump-arc collectible instead of floating at ankle height over the pit
-    [-42, -39, -36, -33, -30, -27, -24, -21, -18, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42].forEach((sx, idx) => { const high = idx % 3 === 0 || inGap(sx); const gy = groundAt(sx); const sy = gy + (high ? 2.6 : 1.1) + Math.random() * 0.9; const m = makeStarMesh(1, false); m.position.set(sx, sy, 0); m.userData.bob = Math.random() * Math.PI * 2; scene.add(m); game.starItems.push({ mesh: m, base: sy, alive: true }); });
+    // ---- glimmers along the planned arcs, trails and clusters ----
+    plan.stars.forEach(s => {
+      const sy = groundAt(s.x) + s.h;
+      const m = makeStarMesh(1, false); m.position.set(s.x, sy, 0); m.userData.bob = Math.random() * Math.PI * 2;
+      scene.add(m); game.starItems.push({ mesh: m, base: sy, alive: true });
+    });
 
-    // fact boxes above ground
-    [-34, -17, 0, 17, 34].forEach((bx, idx) => { const by = groundAt(bx) + 2.5; const g = makeFactBox(); g.position.set(bx, by, 0); scene.add(g); game.factBoxes.push({ group: g, x: bx, baseY: by, used: false, fact: P.facts[idx]!, factIndex: idx, bounce: 0 }); });
+    // ---- wonder blooms (one per planet fact) ----
+    plan.blooms.forEach((b, idx) => {
+      if (idx >= P.facts.length) return;
+      const by = groundAt(b.x) + b.h;
+      const g = makeFactBox(); g.position.set(b.x, by, 0); scene.add(g);
+      game.factBoxes.push({ group: g, x: b.x, baseY: by, used: false, fact: P.facts[idx]!, factIndex: idx, bounce: 0 });
+    });
 
-    // enemies on ground (skip any whose whole ±2 patrol would cross a gap)
-    [-38, -24, -10, 6, 22, 38].forEach(ex => { if (gaps.some(g => ex + 2.0 > g[0] && ex - 2.0 < g[1])) return; const ey = groundAt(ex) + 0.5; const g = makeEnemy(P.enemy); g.position.set(ex, ey, 0); scene.add(g); game.enemies.push({ group: g, baseY: ey, dir: Math.random() < 0.5 ? -1 : 1, range: 2.0, home: ex, alive: true, squish: 1 }); });
+    // ---- Lumins: friendly light-keepers, varied per planet ----
+    plan.creatures.forEach(c => {
+      const kind = c.kind as LuminKind;
+      const ey = groundAt(c.x) + luminBaseOffset(kind);
+      const g = makeLumin(kind, P.enemy, P.sky[1]); g.position.set(c.x, ey, 0); scene.add(g);
+      game.enemies.push({ group: g, baseY: ey, dir: Math.random() < 0.5 ? -1 : 1, range: c.range, home: c.x, alive: true, squish: 1, kind });
+    });
+
+    // ---- environment prop kit: near detail, foreground, mid silhouettes, far ----
+    plan.props.forEach(pr => {
+      const g = makeProp(pr.kind as PropKind, pal, pr.scale, pr.seed);
+      const z = pr.layer === 'near' ? 2.5 + pr.seed * 0.7
+        : pr.layer === 'fg' ? 1.6 - pr.seed * 1.2
+          : pr.layer === 'mid' ? -5 - pr.seed * 5 : -15 - pr.seed * 8;
+      const py = (pr.layer === 'near' || pr.layer === 'fg') ? groundAt(pr.x) : GROUND_Y - 0.4;
+      g.position.set(pr.x, py, z);
+      if (pr.layer === 'near' || pr.layer === 'fg') { scene.add(g); game.decor.push(g); }
+      else { stage.parallaxMid.add(g); }
+    });
+
+    // ---- the ground line: a lighter trim strip along the front lip, and a
+    // darker strata cliff below it. Without these the terrain reads as one
+    // flat coloured slab filling the bottom of the screen. ----
+    const lipMat = rockMat(new THREE.Color(pal.hill).lerp(new THREE.Color(0xffffff), 0.22).getHex(), { rough: 0.85 });
+    const cliffMat = rockMat(new THREE.Color(pal.hill).lerp(new THREE.Color(0xffffff), 0.10).getHex(), { strata: true, rough: 1, flat: true });
+    const lipSegs = steps ? steps.map(s => [s[0], s[1], s[2]] as [number, number, number])
+      : [[game.levelMinX - 4, game.levelMaxX + 4, 0] as [number, number, number]];
+    lipSegs.forEach(([a, b, dy]) => {
+      const carve = (x0v: number, x1v: number) => {
+        const w = x1v - x0v; if (w <= 0.2) return;
+        const lip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, 0.5), lipMat);
+        lip.position.set((x0v + x1v) / 2, GROUND_Y + dy - 0.02, 2.72); lip.receiveShadow = true; groundGroup.add(lip);
+        // Segment the cliff face: one long box stretches the strata texture to
+        // nothing and gives a dead-straight edge. Chunks keep the rock reading
+        // as rock and break the silhouette.
+        const CH = 7;
+        for (let cx = x0v; cx < x1v; cx += CH) {
+          const cw = Math.min(CH, x1v - cx); if (cw < 0.4) break;
+          const jag = 0.2 + Math.random() * 0.35;
+          const hgt = 1.5 + Math.random() * 0.6;
+          const cliff = new THREE.Mesh(new THREE.BoxGeometry(cw * 0.99, hgt, 0.45), cliffMat);
+          cliff.position.set(cx + cw / 2, GROUND_Y + dy - jag - hgt / 2 + 0.25, 2.55 + Math.random() * 0.12);
+          groundGroup.add(cliff);
+        }
+      };
+      // keep the holes open
+      let cur = a;
+      for (const g of gaps.filter(g2 => g2[1] > a && g2[0] < b).sort((p2, q) => p2[0] - q[0])) {
+        if (g[0] > cur) carve(cur, g[0]);
+        cur = Math.max(cur, g[1]);
+      }
+      if (cur < b) carve(cur, b);
+    });
   }
 
-  // mid-parallax hills + background orb (both level types)
-  const hmat = new THREE.MeshStandardMaterial({ color: P.hill, roughness: 1, transparent: true, opacity: 0.55 });
-  for (let k = 0; k < 16; k++) { const r = 3 + Math.random() * 3; const hill = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), hmat); hill.position.set(-LEVEL_LEN / 2 + k * 6 + Math.random() * 3, GROUND_Y - 1, -14 - Math.random() * 4); hill.scale.y = 0.5; stage.parallaxMid.add(hill); }
+  // layered far skyline (replaces the row of identical hemisphere "hills")
+  stage.parallaxMid.add(makeSkyline(P.name, pal, LEVEL_LEN * 1.4));
   const orb = new THREE.Mesh(new THREE.SphereGeometry(6, 32, 24), new THREE.MeshStandardMaterial({ color: P.sky[1], emissive: P.sky[1], emissiveIntensity: 0.15, roughness: 0.8, transparent: true, opacity: 0.6 })); orb.position.set(game.levelType === 'vertical' ? -9 : 8, game.levelType === 'vertical' ? game.levelHeight * 0.6 : 9, -30); stage.parallaxMid.add(orb);
   if (P.rings) { const ring = new THREE.Mesh(new THREE.RingGeometry(7, 10, 48), new THREE.MeshBasicMaterial({ color: 0xf0e0b0, side: THREE.DoubleSide, transparent: true, opacity: 0.4 })); ring.position.copy(orb.position); ring.rotation.x = Math.PI * 0.42; stage.parallaxMid.add(ring); }
 
   // moving platforms (travel mechanic)
-  (T.movingPlats || []).forEach(mp => { const w = 2.8; const plat = new THREE.Mesh(new THREE.BoxGeometry(w, 0.45, 2.2), new THREE.MeshStandardMaterial({ color: P.hill, roughness: 0.7, emissive: 0x223344, emissiveIntensity: 0.15, metalness: 0.2 })); const py = GROUND_Y + mp.y; plat.position.set(mp.x, py, 0); scene.add(plat); game.movingPlats.push({ mesh: plat, baseX: mp.x, baseY: py, axis: mp.axis, range: mp.range, speed: mp.speed, phase: Math.random() * 6, w: w, top: py + 0.22 }); });
+  (T.movingPlats || []).forEach(mp => {
+    const w = 2.8;
+    // vertical climbs author x directly in the ±9 base; horizontal levels are scaled
+    const mx = game.levelType === 'vertical' ? mp.x : sx(mp.x);
+    const range = game.levelType === 'vertical' ? mp.range : (mp.axis === 'x' ? sx(mp.range) : mp.range);
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(w, 0.45, 2.2), new THREE.MeshStandardMaterial({ color: P.hill, roughness: 0.7, emissive: 0x223344, emissiveIntensity: 0.15, metalness: 0.2 }));
+    const py = GROUND_Y + mp.y; plat.position.set(mx, py, 0); plat.castShadow = true; plat.receiveShadow = true; scene.add(plat);
+    game.movingPlats.push({ mesh: plat, baseX: mx, baseY: py, axis: mp.axis, range, speed: mp.speed, phase: Math.random() * 6, w: w, top: py + 0.22 });
+  });
 
   buildDynamics(game, P);
 
   // Power Box — grants this level's elemental power when bumped
   if (P.power && P.powerBox !== undefined) {
-    const bx = P.powerBox;
+    const bx = game.levelType === 'vertical' ? P.powerBox : sx(P.powerBox);
     // horizontal: float above the ground at bx; vertical: just above the start base
     const by = game.levelType === 'vertical' ? GROUND_Y + 1.9 : groundAt(bx) + 2.5;
     const g = makePowerBox(powerTint(P.power)); g.position.set(bx, by, 0); scene.add(g);
@@ -273,7 +450,8 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
   // Hidden star cluster — 4 pale-blue "hidden starlight" stars in a diamond,
   // marked by a faint shimmer ring. Collect all 4 for a Star-Finder sticker.
   if (P.secret) {
-    const [hx, hy] = P.secret; const cy = GROUND_Y + hy;
+    const [hx0, hy] = P.secret; const hx = game.levelType === 'vertical' ? hx0 : sx(hx0);
+    const cy = (game.levelType === 'vertical' ? GROUND_Y : groundAt(hx)) + hy;
     ([[0, 0.9], [-0.9, 0], [0.9, 0], [0, -0.9]] as [number, number][]).forEach(([ox, oy]) => {
       const m = makeStarMesh(0.85, false);
       const mat = m.material as THREE.MeshStandardMaterial;
@@ -287,7 +465,8 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
 
   // Secret power cache — a glowing reward placed where the power can reach it.
   if (P.powerCache) {
-    const [cx, cy] = P.powerCache; const cyAbs = GROUND_Y + cy;
+    const [cx0, cy] = P.powerCache; const cx = game.levelType === 'vertical' ? cx0 : sx(cx0);
+    const cyAbs = (game.levelType === 'vertical' ? GROUND_Y : groundAt(cx)) + cy;
     const cg = new THREE.Group();
     cg.add(makeStarMesh(1.5, true));
     const cglow = new THREE.Mesh(new THREE.SphereGeometry(1.1, 18, 14), new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.25 })); cg.add(cglow);

@@ -23,8 +23,8 @@
       <div class="hud-left">
         <div class="planet-name" id="planetName">Mercury</div>
         <div class="goal-bar">
-          <div class="pill"><span>⭐</span><span id="starCount">0</span></div>
-          <div class="pill"><span>🎁</span><span id="boxCount">0/5</span></div>
+          <div class="pill"><span>✨</span><span id="starCount">0</span></div>
+          <div class="pill"><span>🌸</span><span id="boxCount">0/5</span></div>
         </div>
       </div>
       <button class="menu-btn" id="menuBtn" aria-label="Menu">⏸</button>
@@ -51,26 +51,49 @@
       <div class="ctrl-btn" id="upBtn">▲</div>
       <div class="ctrl-btn" id="downBtn">▼</div>
     </div>
-    <div class="ctrl-btn shoot-btn" id="shootBtn">🔫<span>SHOOT</span></div>
+    <div class="ctrl-btn shoot-btn" id="shootBtn">✨<span>PUFF</span></div>
   </div>
 
   <div id="flightHud">
     <div class="flight-top">
-      <div class="flight-pill" id="flightTarget">🚀 Flying to Venus</div>
+      <div class="flight-pill" id="flightTarget">🎈 Drifting to Venus</div>
       <button class="flight-skip" id="skipBtn">Skip ⏭</button>
     </div>
     <div class="flight-meter"><div class="flight-fill" id="flightFill"></div></div>
-    <div class="flight-hint" id="flightHint">▲ ▼ to steer • 🔫 shoot rocks • collect ⭐</div>
+    <div class="flight-hint" id="flightHint">▲ ▼ to steer • ✨ puff the dust • gather the light</div>
   </div>
 </div>
 
 <div id="flightArrive"><span class="fa-emoji">🪐</span><span class="fa-text">Arriving!</span></div>
 
+<!-- LEVEL INTRO — a calm, non-blocking "here is where you are and what to do" beat -->
+<div id="levelIntro">
+  <div class="li-emoji" id="liEmoji">🪐</div>
+  <div class="li-name" id="liName">Mercury</div>
+  <div class="li-goal" id="liGoal">Wake the Glowseed</div>
+</div>
+
+<!-- END OF WORLD — the payoff, before travelling on -->
+<div class="overlay" id="results">
+  <div class="ov-bg"></div>
+  <div class="card results-card">
+    <span class="emoji" id="resEmoji">🌞</span>
+    <div class="kicker" id="resKicker">The Glowseed is awake!</div>
+    <div class="title" id="resTitle">Mercury is glowing</div>
+    <div class="res-rows">
+      <div class="res-row"><span class="res-ico">✨</span><span class="res-lab">Light gathered</span><span class="res-val" id="resLight">0</span></div>
+      <div class="res-row"><span class="res-ico">🌸</span><span class="res-lab">Whisperbuds opened</span><span class="res-val" id="resBuds">0/5</span></div>
+      <div class="res-row" id="resKeepRow"><span class="res-ico">🏅</span><span class="res-lab">Keepsakes</span><span class="res-val" id="resKeep">0</span></div>
+    </div>
+    <button class="btn" id="resBtn">Onward 🎈</button>
+  </div>
+</div>
+
 <div class="overlay" id="fact">
   <div class="ov-bg"></div>
   <div class="card" id="factCard">
-    <span class="emoji" id="factEmoji">🪐</span>
-    <div class="kicker" id="factKicker">You found a Piece of the Sun!</div>
+    <span class="emoji" id="factEmoji">🌸</span>
+    <div class="kicker" id="factKicker">You woke the Glowseed!</div>
     <div class="title" id="factTitle">Next: Venus</div>
     <div class="body" id="factBody"></div>
     <button class="replay-btn" id="replayBtn" aria-label="Hear it again">🔊 <span>Hear it again</span></button>
@@ -83,8 +106,8 @@
   <div class="card">
     <span class="emoji">🌟</span>
     <div class="kicker">Amazing explorer!</div>
-    <div class="title">You collected every Piece of the Sun!</div>
-    <div class="body">You traveled across the whole solar system. The Sun is whole again!</div>
+    <div class="title">You woke every Glowseed!</div>
+    <div class="body">You travelled the whole solar system, and every world is glowing again.</div>
     <button class="btn" id="winBtn">Play again 🔁</button>
   </div>
 </div>
@@ -168,10 +191,10 @@
     <h2 class="sheet-title">How to Play</h2>
     <div class="howto-list">
       <div class="howto-item"><span class="hi-emoji">◀ ▶</span><span>Move around • tap <b>JUMP</b> to bounce</span></div>
-      <div class="howto-item"><span class="hi-emoji">🎁</span><span>Bump the <b>boxes</b> for fun space facts</span></div>
-      <div class="howto-item"><span class="hi-emoji">👾</span><span>Hop on the <b>cute aliens</b> for a star</span></div>
-      <div class="howto-item"><span class="hi-emoji">☀️</span><span>Find the <b>Piece of the Sun</b> to finish</span></div>
-      <div class="howto-item"><span class="hi-emoji">🚀</span><span>Fly your rocket to the next planet!</span></div>
+      <div class="howto-item"><span class="hi-emoji">🌸</span><span>Touch a <b>Whisperbud</b> to hear a space secret</span></div>
+      <div class="howto-item"><span class="hi-emoji">🐣</span><span>Say hello to a <b>Lumin</b> — it shares its light</span></div>
+      <div class="howto-item"><span class="hi-emoji">🌞</span><span>Find and <b>wake the Glowseed</b> to finish</span></div>
+      <div class="howto-item"><span class="hi-emoji">🎈</span><span>Drift to the next world on the breeze!</span></div>
     </div>
     <button class="menu-main-btn" id="howBackBtn">Got it!</button>
   </div>

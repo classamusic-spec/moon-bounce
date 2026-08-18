@@ -19,8 +19,8 @@ export function startFlight(game: Game): void {
   ui.byId('flightControls').style.display = 'none';
   ui.byId('sunArrow').classList.remove('show');
   ui.byId('flightHud').classList.add('show');
-  ui.byId('flightTarget').textContent = '🚀 Flying to ' + nextP.name;
-  ui.byId('flightHint').textContent = 'Hop in the rocket! 🚀';
+  ui.byId('flightTarget').textContent = '🎈 Drifting to ' + nextP.name;
+  ui.byId('flightHint').textContent = 'Climb aboard! 🎈';
   ui.byId('flightFill').style.width = '0%';
 
   // hide the whole platformer scene
@@ -136,7 +136,7 @@ function endFlight(game: Game): void {
   // arrival animation then load next level
   flight.arriving = true;
   (ui.byId('flightArrive').querySelector('.fa-emoji') as HTMLElement).textContent = PLANETS[game.pIndex + 1]!.emoji;
-  const tally = flight.rocksBlasted > 0 ? ('Arriving! 🪨×' + flight.rocksBlasted + ' blasted') : 'Arriving!';
+  const tally = flight.rocksBlasted > 0 ? ('Arriving! ✨×' + flight.rocksBlasted + ' lights gathered') : 'Arriving!';
   (ui.byId('flightArrive').querySelector('.fa-text') as HTMLElement).textContent = tally;
   const fa = ui.byId('flightArrive'); fa.classList.remove('show'); void fa.offsetWidth; fa.classList.add('show');
   if (!game.calm) game.audio.sSun();
@@ -200,7 +200,7 @@ export function updateFlight(game: Game): void {
       f.rocket.position.set(-1.5, 0, 0); f.rocket.rotation.z = 0; f.ry = 0; f.vy = 0;
       f.fscene.remove(f.ground); f.fscene.remove(f.blob);
       game.ui.byId('flightControls').style.display = 'flex';
-      game.ui.byId('flightHint').textContent = '▲ ▼ to steer • 🔫 shoot rocks • collect ⭐';
+      game.ui.byId('flightHint').textContent = '▲ ▼ to steer • ✨ puff the dust • gather the light';
     }
     renderer.render(f.fscene, f.fcam);
     return;

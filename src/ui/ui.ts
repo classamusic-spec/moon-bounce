@@ -267,8 +267,8 @@ export class UI {
   // ---- fact card ----
   prepBoxFact(planetName: string, fact: string, replayHidden: boolean): void {
     const c = this.byId('factCard'); c.classList.add('factbox');
-    this.byId('factEmoji').textContent = '🎁';
-    this.byId('factKicker').textContent = 'Fun fact!';
+    this.byId('factEmoji').textContent = '🌸';
+    this.byId('factKicker').textContent = 'A whisper…';
     this.byId('factTitle').textContent = planetName;
     this.byId('factBody').textContent = fact;
     this.byId('factBtn').textContent = 'Yay! 🌟';
@@ -278,10 +278,10 @@ export class UI {
   prepSunFact(emoji: string, title: string, body: string, replayHidden: boolean): void {
     const c = this.byId('factCard'); c.classList.remove('factbox');
     this.byId('factEmoji').textContent = emoji;
-    this.byId('factKicker').textContent = 'You found a Piece of the Sun!';
+    this.byId('factKicker').textContent = 'You woke the Glowseed!';
     this.byId('factTitle').textContent = title;
     this.byId('factBody').textContent = body;
-    this.byId('factBtn').textContent = 'Next planet! 🚀';
+    this.byId('factBtn').textContent = 'Onward 🎈';
     this.byId('replayBtn').classList.toggle('hidden', replayHidden);
   }
 
@@ -294,6 +294,28 @@ export class UI {
     this.byId('factBtn').textContent = 'Back to map 🗺️';
     this.byId('replayBtn').classList.toggle('hidden', replayHidden);
   }
+
+  /** A calm, NON-BLOCKING title beat at level start: where you are and what to
+   *  do here. The game keeps running underneath — nothing is gated on it. */
+  showLevelIntro(emoji: string, name: string, goal: string): void {
+    const el = this.byId('levelIntro');
+    this.byId('liEmoji').textContent = emoji;
+    this.byId('liName').textContent = name;
+    this.byId('liGoal').textContent = goal;
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  }
+
+  /** The end-of-world payoff card: what you actually did here, before travelling on. */
+  showResults(o: { emoji: string; title: string; light: number; buds: number; budsTotal: number; keepsakes: number }): void {
+    this.byId('resEmoji').textContent = o.emoji;
+    this.byId('resTitle').textContent = o.title;
+    this.byId('resLight').textContent = String(o.light);
+    this.byId('resBuds').textContent = o.buds + '/' + o.budsTotal;
+    this.byId('resKeep').textContent = String(o.keepsakes);
+    this.byId('resKeepRow').style.display = o.keepsakes > 0 ? 'flex' : 'none';
+    this.byId('results').classList.add('show');
+  }
+  hideResults(): void { this.byId('results').classList.remove('show'); }
 
   showFact(): void { this.byId('fact').classList.add('show'); }
   hideFact(): void { this.byId('fact').classList.remove('show'); }
@@ -367,6 +389,7 @@ export class UI {
     this.byId('replayBtn').addEventListener('click', () => audio.replayFact());
     if (!audio.ttsSupported) { this.byId('replayBtn').classList.add('hidden'); this.byId('setRead').style.display = 'none'; }
     this.byId('factBtn').addEventListener('click', () => game.onFactBtn());
+    this.byId('resBtn').addEventListener('click', () => game.onResultsBtn());
     this.byId('skipBtn').addEventListener('click', () => {
       const f = game.flight;
       if (game.mode !== 'flight' || !f || f.arriving) return;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LEVEL_LEN, GROUND_Y } from '../core/constants';
+import { LEVEL_LEN, GROUND_Y, sx as spanScale } from '../core/constants';
 import type { Planet } from '../core/types';
 import { makeCloud, makeBird, makeRock, makeGeyser, makeIceChunk, makeBubble, makeFlare, makeBush, makeSpout } from '../entities/meshes';
 import type { Game } from '../main_game';
@@ -16,37 +16,41 @@ export function buildDynamics(game: Game, P: Planet): void {
   // vertical climbs clamp the player to |x| <= 9; skip dyn spots outside the base
   const vertical = P.terrain.type === 'vertical';
   const inBase = (x: number) => !vertical || Math.abs(x) <= 9;
+  // Authored dyn positions were written against the original 95-unit span;
+  // horizontal levels are now much longer, so map them across. Vertical climbs
+  // author x directly in the ±9 base and are left alone.
+  const S = (x: number) => (vertical ? x : spanScale(x));
 
   // Mercury: extra crater bumps + solar boost shimmer is handled in animate
   if (d.craters) { const cmat = new THREE.MeshStandardMaterial({ color: P.hill, roughness: 1 }); for (let k = 0; k < 14; k++) { const cx = -LEVEL_LEN / 2 + 6 + k * 6 + Math.random() * 3; const rim = new THREE.Mesh(new THREE.TorusGeometry(0.8 + Math.random() * 0.5, 0.18, 8, 18), cmat); rim.position.set(cx, gAt(cx) + 0.02, 0.3); rim.rotation.x = Math.PI / 2; rim.scale.y = 0.5; scene.add(rim); game.decor.push(rim); } }
   // Mercury: rolling sun-flare orbs (glowing rollers you jump over or bop)
-  if (d.flares) { d.flares.forEach(fx => { if (!inBase(fx)) return; const r = makeFlare(); r.position.set(fx, gAt(fx) + 0.45, 0); scene.add(r); game.rollers.push({ mesh: r, x: fx, home: fx, dir: Math.random() < 0.5 ? -1 : 1, range: 5, alive: true, flare: true }); }); }
+  if (d.flares) { d.flares.forEach(fx0 => { const fx = S(fx0); if (!inBase(fx)) return; const r = makeFlare(); r.position.set(fx, gAt(fx) + 0.45, 0); scene.add(r); game.rollers.push({ mesh: r, x: fx, home: fx, dir: Math.random() < 0.5 ? -1 : 1, range: 5, alive: true, flare: true }); }); }
 
   // Venus: wind zones with drifting particles
   if (d.wind) {
-    game.windZones = d.wind.zones.map(z => ({ x0: z[0], x1: z[1] })); game.windStrength = d.wind.strength;
-    const wg = new THREE.BufferGeometry(), wp: number[] = []; for (let i = 0; i < 120; i++) { const z = d.wind.zones[i % d.wind.zones.length]!; wp.push(z[0] + Math.random() * (z[1] - z[0]), GROUND_Y + 0.5 + Math.random() * 4, (Math.random() - 0.5) * 2); }
+    game.windZones = d.wind.zones.map(z => ({ x0: S(z[0]), x1: S(z[1]) })); game.windStrength = d.wind.strength;
+    const wg = new THREE.BufferGeometry(), wp: number[] = []; for (let i = 0; i < 120; i++) { const z = d.wind.zones[i % d.wind.zones.length]!; wp.push(S(z[0]) + Math.random() * (S(z[1]) - S(z[0])), GROUND_Y + 0.5 + Math.random() * 4, (Math.random() - 0.5) * 2); }
     wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); game.windParticles = new THREE.Points(wg, new THREE.PointsMaterial({ color: d.wind.color, size: 0.16, transparent: true, opacity: 0.55 })); scene.add(game.windParticles);
   }
 
   // Earth: cloud platforms + background birds + bouncy bushes
-  if (d.clouds) { d.clouds.forEach(c => { const g = makeCloud(); g.position.set(c[0], GROUND_Y + c[1], 0); scene.add(g); game.movers.push({ mesh: g, x: c[0], top: GROUND_Y + c[1] + 0.3, w: 3.0, kind: 'cloud', baseY: GROUND_Y + c[1], phase: Math.random() * 6 }); }); }
+  if (d.clouds) { d.clouds.forEach(c0 => { const c: [number, number] = [S(c0[0]), c0[1]]; const g = makeCloud(); g.position.set(c[0], GROUND_Y + c[1], 0); scene.add(g); game.movers.push({ mesh: g, x: c[0], top: GROUND_Y + c[1] + 0.3, w: 3.0, kind: 'cloud', baseY: GROUND_Y + c[1], phase: Math.random() * 6 }); }); }
   if (d.birds) { for (let i = 0; i < 4; i++) { const b = makeBird(); b.position.set(-LEVEL_LEN / 2 + i * 22, 5 + Math.random() * 3, -12 - Math.random() * 6); scene.add(b); game.decor.push(b); b.userData.spd = 0.02 + Math.random() * 0.02; } }
-  if (d.springs) { d.springs.forEach(sx => { if (!inBase(sx)) return; const m = makeBush(); m.position.set(sx, gAt(sx) + 0.35, 0); scene.add(m); game.bouncePads.push({ mesh: m, x: sx, y: gAt(sx) + 0.6, power: 0.78, spring: true }); }); }
+  if (d.springs) { d.springs.forEach(s0 => { const spx = S(s0); if (!inBase(spx)) return; const m = makeBush(); m.position.set(spx, gAt(spx) + 0.35, 0); scene.add(m); game.bouncePads.push({ mesh: m, x: spx, y: gAt(spx) + 0.6, power: 0.78, spring: true }); }); }
 
   // Mars: rolling rocks + rust spires
-  if (d.rocks) { d.rocks.forEach(rx => { if (!inBase(rx)) return; const r = makeRock(); r.position.set(rx, gAt(rx) + 0.45, 0); scene.add(r); game.rollers.push({ mesh: r, x: rx, home: rx, dir: Math.random() < 0.5 ? -1 : 1, range: 5, alive: true }); }); }
-  if (d.spires) { const smat = new THREE.MeshStandardMaterial({ color: P.hill, roughness: 1 }); [-12, 7, 26].forEach(sx => { const sp = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.4, 7), smat); sp.position.set(sx, gAt(sx) + 1.0, -1.2); scene.add(sp); game.decor.push(sp); }); }
+  if (d.rocks) { d.rocks.forEach(rx0 => { const rx = S(rx0); if (!inBase(rx)) return; const r = makeRock(); r.position.set(rx, gAt(rx) + 0.45, 0); scene.add(r); game.rollers.push({ mesh: r, x: rx, home: rx, dir: Math.random() < 0.5 ? -1 : 1, range: 5, alive: true }); }); }
+  if (d.spires) { const smat = new THREE.MeshStandardMaterial({ color: P.hill, roughness: 1 }); [-12, 7, 26].forEach(s0 => { const spx = S(s0); const sp = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.4, 7), smat); sp.position.set(spx, gAt(spx) + 1.0, -1.2); scene.add(sp); game.decor.push(sp); }); }
 
   // Jupiter: bounce geysers + drifting storm clouds
-  if (d.geysers) { d.geysers.forEach(gx => { if (!inBase(gx)) return; const m = makeGeyser(); m.position.set(gx, gAt(gx) + 0.3, 0); scene.add(m); game.bouncePads.push({ mesh: m, x: gx, y: gAt(gx) + 0.6, power: 0.9 }); }); }
-  if (d.stormClouds) { d.stormClouds.forEach(c => { if (!inBase(c[0])) return; const g = makeCloud(0xd9b98a); g.position.set(c[0], GROUND_Y + c[1], 0); scene.add(g); game.movers.push({ mesh: g, x: c[0], top: GROUND_Y + c[1] + 0.3, w: 3.0, kind: 'cloud', baseY: GROUND_Y + c[1], phase: Math.random() * 6, drift: 1 }); }); }
+  if (d.geysers) { d.geysers.forEach(gx0 => { const gx = S(gx0); if (!inBase(gx)) return; const m = makeGeyser(); m.position.set(gx, gAt(gx) + 0.3, 0); scene.add(m); game.bouncePads.push({ mesh: m, x: gx, y: gAt(gx) + 0.6, power: 0.9 }); }); }
+  if (d.stormClouds) { d.stormClouds.forEach(c0 => { const c: [number, number] = [S(c0[0]), c0[1]]; if (!inBase(c[0])) return; const g = makeCloud(0xd9b98a); g.position.set(c[0], GROUND_Y + c[1], 0); scene.add(g); game.movers.push({ mesh: g, x: c[0], top: GROUND_Y + c[1] + 0.3, w: 3.0, kind: 'cloud', baseY: GROUND_Y + c[1], phase: Math.random() * 6, drift: 1 }); }); }
 
   // Saturn: floating ring-ice mover platforms
-  if (d.ringMovers) { d.ringMovers.forEach(c => { const g = makeIceChunk(); g.position.set(c[0], GROUND_Y + c[1], 0); scene.add(g); game.movers.push({ mesh: g, x: c[0], top: GROUND_Y + c[1] + 0.3, w: 2.6, kind: 'ice', baseY: GROUND_Y + c[1], phase: Math.random() * 6, amp: 1.0 }); }); }
+  if (d.ringMovers) { d.ringMovers.forEach(c0 => { const c: [number, number] = [S(c0[0]), c0[1]]; const g = makeIceChunk(); g.position.set(c[0], GROUND_Y + c[1], 0); scene.add(g); game.movers.push({ mesh: g, x: c[0], top: GROUND_Y + c[1] + 0.3, w: 2.6, kind: 'ice', baseY: GROUND_Y + c[1], phase: Math.random() * 6, amp: 1.0 }); }); }
 
   // Uranus: ice patches (slippery spots) + frost
-  if (d.ice) { const imat = new THREE.MeshStandardMaterial({ color: 0xcdeefb, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.7, emissive: 0x335566, emissiveIntensity: 0.2 }); d.ice.forEach(p => { if (!inBase(p[0])) return; const patch = new THREE.Mesh(new THREE.BoxGeometry(p[1], 0.12, 3), imat); patch.position.set(p[0], gAt(p[0]) + 0.07, 0.2); scene.add(patch); game.decor.push(patch); game.windZones.push({ x0: p[0] - p[1] / 2, x1: p[0] + p[1] / 2, ice: true }); }); }
+  if (d.ice) { const imat = new THREE.MeshStandardMaterial({ color: 0xcdeefb, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.7, emissive: 0x335566, emissiveIntensity: 0.2 }); d.ice.forEach(p0 => { const p: [number, number] = [S(p0[0]), p0[1]]; if (!inBase(p[0])) return; const patch = new THREE.Mesh(new THREE.BoxGeometry(p[1], 0.12, 3), imat); patch.position.set(p[0], gAt(p[0]) + 0.07, 0.2); scene.add(patch); game.decor.push(patch); game.windZones.push({ x0: p[0] - p[1] / 2, x1: p[0] + p[1] / 2, ice: true }); }); }
   if (d.frost) { const fg = new THREE.BufferGeometry(), fp: number[] = []; for (let i = 0; i < 80; i++) fp.push((Math.random() - 0.5) * LEVEL_LEN, GROUND_Y + Math.random() * 6, (Math.random() - 0.5) * 4); fg.setAttribute('position', new THREE.Float32BufferAttribute(fp, 3)); const frost = new THREE.Points(fg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.1, transparent: true, opacity: 0.6 })); scene.add(frost); game.decor.push(frost); frost.userData.frost = true; }
 
   // Neptune: alternating gusts + floating bubbles that bob you up
@@ -54,10 +58,10 @@ export function buildDynamics(game: Game, P: Planet): void {
     game.gustState.strength = d.gusts.strength; game.gustState.period = d.gusts.period;
     const gg = new THREE.BufferGeometry(), gp: number[] = []; for (let i = 0; i < 100; i++) gp.push((Math.random() - 0.5) * LEVEL_LEN, GROUND_Y + 0.5 + Math.random() * 5, (Math.random() - 0.5) * 3); gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3)); game.windParticles = new THREE.Points(gg, new THREE.PointsMaterial({ color: d.gusts.color, size: 0.14, transparent: true, opacity: 0.5 })); scene.add(game.windParticles);
   }
-  if (d.bubbles) { d.bubbles.forEach(bx => { const m = makeBubble(); m.position.set(bx, GROUND_Y + 1.6, 0); scene.add(m); game.bubbles.push({ mesh: m, x: bx, y: GROUND_Y + 1.6, phase: Math.random() * 6 }); }); }
+  if (d.bubbles) { d.bubbles.forEach(bx0 => { const bx = S(bx0); const m = makeBubble(); m.position.set(bx, GROUND_Y + 1.6, 0); scene.add(m); game.bubbles.push({ mesh: m, x: bx, y: GROUND_Y + 1.6, phase: Math.random() * 6 }); }); }
 
   // freezable ground spouts (ice/bubble): puff into a solid platform/bridge
-  if (d.freezeSpots) { d.freezeSpots.forEach(([x, h]) => { if (!inBase(x)) return; const sp = makeSpout(h); sp.position.set(x, gAt(x), 0); scene.add(sp); game.freezables.push({ mesh: sp, x, y: gAt(x) + h, w: 3.2, frozen: false }); }); }
+  if (d.freezeSpots) { d.freezeSpots.forEach(([x0, h]) => { const x = S(x0); if (!inBase(x)) return; const sp = makeSpout(h); sp.position.set(x, gAt(x), 0); scene.add(sp); game.freezables.push({ mesh: sp, x, y: gAt(x) + h, w: 3.2, frozen: false }); }); }
   // floating clouds (vertical climbs): puff (spark/ice) into a solid step
   if (d.puffClouds) { d.puffClouds.forEach(([x, y]) => { const c = makeCloud(0xe8e0ff); c.position.set(x, GROUND_Y + y, 0); scene.add(c); game.freezables.push({ mesh: c, x, y: GROUND_Y + y, w: 3.0, frozen: false }); }); }
 }
