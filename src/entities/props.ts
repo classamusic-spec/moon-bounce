@@ -45,7 +45,8 @@ import type { Palette } from '../systems/materials';
 export type PropKind =
   | 'spire' | 'arch' | 'boulder' | 'crystalCluster' | 'flora' | 'monolith'
   | 'mushroomTree' | 'iceShelf' | 'vent' | 'ruinPillar' | 'floatingIsle' | 'duneRipple'
-  | 'lightPod' | 'bannerStone';
+  | 'lightPod' | 'bannerStone'
+  | 'pineTree' | 'leafTree' | 'mountain';
 
 /** Global motion control for self-animating props (banner sway, isle bob,
  *  light-pod breathing). Set `speed` to ~0.55 in Calm Mode, or `enabled=false`
@@ -197,6 +198,7 @@ const gPlane = (): THREE.BufferGeometry => sharedGeo('prop:plane', () => new THR
 const gRing = (): THREE.BufferGeometry => sharedGeo('prop:ring', () => new THREE.RingGeometry(0.42, 1, 12));            // 24
 const gDisc = (): THREE.BufferGeometry => sharedGeo('prop:disc', () => new THREE.CircleGeometry(1, 10));                // 10
 const gDiscBig = (): THREE.BufferGeometry => sharedGeo('prop:discBig', () => new THREE.CircleGeometry(1, 22));          // 22
+const gRingThin = (): THREE.BufferGeometry => sharedGeo('prop:ringThin', () => new THREE.RingGeometry(0.9, 1, 48));      // 96
 const gArch = (): THREE.BufferGeometry => sharedGeo('prop:arch', () => new THREE.TorusGeometry(1, 0.19, 4, 9, Math.PI)); // 72
 
 // Seeded variant banks (4 each).
@@ -643,7 +645,71 @@ const buildBannerStone: Build = (g, t, rnd, v) => {
   });
 };
 
+/** PINE TREE ~120 tris — a conifer: leaning trunk + three stacked leaf cones
+ *  narrowing to a tip, with a tiny warm light bud resting at the crown. */
+const buildPineTree: Build = (g, t, rnd, v) => {
+  const S = rr(rnd, 0.9, 1.4);
+  const H = rr(rnd, 1.9, 2.6) * S;
+  const lean = rr(rnd, -0.06, 0.06);
+  const dark = mix(t.leaf, 0x1c3a28, 0.42);
+  put(g, vTaper(v), rockMat(mix(t.soil, 0x4a3320, 0.5), { flat: true }), [0, H * 0.24, 0], [0.09 * S, H * 0.5, 0.09 * S], [0, 0, lean]);
+  const tiers = 3 + (v % 2);
+  for (let i = 0; i < tiers; i++) {
+    const f = i / tiers;
+    const r = (0.62 - f * 0.38) * S * rr(rnd, 0.9, 1.1);
+    const y = H * (0.34 + f * 0.6);
+    put(g, gCone(), organicMat(i % 2 ? dark : mix(dark, t.leaf, 0.45)), [lean * y * 8 * 0.09, y, 0], [r, H * 0.34, r], [0, rnd() * TAU, lean]);
+  }
+  put(g, gBall(), signalMat(t.glow, 0.9), [lean * H * 0.7, H * 1.02, 0.02 * S], [0.05 * S, 0.05 * S, 0.05 * S]);
+};
+
+/** LEAF TREE ~150 tris — a broadleaf: curved two-part trunk, a canopy of three
+ *  overlapping leaf blobs with a sunlit crown blob, and a couple of glowing
+ *  fruit motes hanging in the foliage. */
+const buildLeafTree: Build = (g, t, rnd, v) => {
+  const S = rr(rnd, 0.9, 1.35);
+  const H = rr(rnd, 1.5, 2.1) * S;
+  const bend = rr(rnd, -0.16, 0.16);
+  const bark = rockMat(mix(t.soil, 0x54381f, 0.55), { flat: true });
+  put(g, gTube(), bark, [0, H * 0.3, 0], [0.11 * S, H * 0.62, 0.11 * S], [0, 0, bend * 0.5]);
+  put(g, gTube(), bark, [bend * H * 0.5, H * 0.68, 0], [0.08 * S, H * 0.5, 0.08 * S], [0, 0, bend]);
+  const cx = bend * H * 0.8;
+  const leafLo = organicMat(mix(t.leaf, 0x256b3a, 0.35));
+  const leafHi = organicMat(mix(t.leaf, 0x9fdb7a, 0.4));
+  put(g, vPebble(v), leafLo, [cx - 0.34 * S, H * 0.92, 0], [0.46 * S, 0.38 * S, 0.42 * S]);
+  put(g, vPebble((v + 1) % 4), leafLo, [cx + 0.36 * S, H * 0.95, 0.06 * S], [0.42 * S, 0.36 * S, 0.4 * S]);
+  put(g, vPebble((v + 2) % 4), leafHi, [cx + 0.02 * S, H * 1.12, 0.02 * S], [0.44 * S, 0.4 * S, 0.42 * S]);
+  for (let i = 0; i < 2; i++) {
+    put(g, gBall(), signalMat(t.gem, 1.0), [cx + rr(rnd, -0.4, 0.4) * S, H * rr(rnd, 0.85, 1.05), 0.3 * S], [0.045 * S, 0.045 * S, 0.045 * S]);
+  }
+  lightPocket(g, t.glow, 0.8 * S, [cx, H * 1.0, 0.3 * S], 0.12);
+};
+
+/** MOUNTAIN ~130 tris — a two/three-peak massif with snow caps and a foothill,
+ *  built for the mid/bg layers (use scale 1.5-3 back there). */
+const buildMountain: Build = (g, t, rnd, v) => {
+  const S = rr(rnd, 1.2, 1.8);
+  // mountains are ROCK — cool blue-grey regardless of how green the world is,
+  // or on a green planet they read as giant pines
+  const rock = rockMat(desat(mix(t.stoneDeep, 0x76819a, 0.62), 0.18), { flat: true, strata: true });
+  const snow = organicMat(mix(t.ice, 0xffffff, 0.6));
+  const peaks = 2 + (v % 2);
+  let px = -0.7 * S;
+  for (let i = 0; i < peaks; i++) {
+    const h = rr(rnd, 1.6, 2.6) * S * (i === 1 ? 1.25 : 0.85);
+    const r = rr(rnd, 0.7, 1.0) * S;
+    put(g, gCone(), rock, [px, h * 0.5, rr(rnd, -0.3, 0.3) * S], [r, h, r * 0.9], [0, rnd() * TAU, 0]);
+    // snow cap: a small bright cone seated on the summit
+    put(g, gCone(), snow, [px, h * 0.86, 0], [r * 0.32, h * 0.3, r * 0.29], [0, rnd() * TAU, 0]);
+    px += rr(rnd, 0.75, 1.15) * S;
+  }
+  put(g, vPebble(v), rockMat(t.stone, { flat: true }), [0.2 * S, 0.22 * S, 0.4 * S], [0.9 * S, 0.34 * S, 0.7 * S]);
+};
+
 const BUILDERS: Record<PropKind, Build> = {
+  pineTree: buildPineTree,
+  leafTree: buildLeafTree,
+  mountain: buildMountain,
   spire: buildSpire,
   arch: buildArch,
   boulder: buildBoulder,
@@ -682,23 +748,28 @@ export function makeProp(kind: PropKind, pal: Palette, scale = 1, seed = Math.ra
 
 interface PropSet { fg: PropKind[]; mid: PropKind[]; bg: PropKind[] }
 
+// Each planet's mix is deliberately DISTINCT — bg lists share almost nothing,
+// so no two worlds read as recolours of each other. Signatures: Mercury owns
+// the stone arch, Venus the ruined pillars, Earth trees + snow mountains, Mars
+// the strata spires and vents, Jupiter floating isles, Saturn/Uranus two
+// different ice registers, Neptune monoliths in the deep.
 const PLANET_PROPS: Record<string, PropSet> = {
-  // cratered, rocky, quiet
-  mercury: { fg: ['duneRipple', 'boulder', 'crystalCluster', 'lightPod'], mid: ['spire', 'boulder', 'vent', 'bannerStone'], bg: ['spire', 'arch', 'monolith'] },
-  // golden windswept plateaus
-  venus: { fg: ['duneRipple', 'boulder', 'lightPod', 'bannerStone'], mid: ['monolith', 'spire', 'duneRipple', 'ruinPillar'], bg: ['arch', 'monolith', 'spire'] },
-  // green and alive
-  earth: { fg: ['flora', 'boulder', 'lightPod', 'duneRipple'], mid: ['mushroomTree', 'flora', 'bannerStone', 'boulder'], bg: ['mushroomTree', 'arch', 'spire'] },
-  // canyon / rust
-  mars: { fg: ['boulder', 'duneRipple', 'vent', 'crystalCluster'], mid: ['spire', 'ruinPillar', 'boulder', 'lightPod'], bg: ['spire', 'arch', 'monolith'] },
+  // cratered, rocky, quiet — the arch country
+  mercury: { fg: ['duneRipple', 'boulder', 'crystalCluster', 'lightPod'], mid: ['arch', 'boulder', 'vent', 'bannerStone'], bg: ['arch', 'spire', 'boulder'] },
+  // golden windswept plateaus — an ancient, wind-worn civilisation
+  venus: { fg: ['duneRipple', 'boulder', 'lightPod', 'bannerStone'], mid: ['ruinPillar', 'monolith', 'duneRipple', 'bannerStone'], bg: ['monolith', 'ruinPillar', 'duneRipple'] },
+  // green and alive — trees everywhere, snow mountains behind
+  earth: { fg: ['flora', 'leafTree', 'boulder', 'lightPod'], mid: ['leafTree', 'pineTree', 'flora', 'mushroomTree'], bg: ['mountain', 'pineTree', 'mountain'] },
+  // canyon / rust — strata needles and warm vents
+  mars: { fg: ['boulder', 'duneRipple', 'vent', 'crystalCluster'], mid: ['spire', 'vent', 'boulder', 'lightPod'], bg: ['spire', 'monolith', 'spire'] },
   // gas-band cloudscape — a VERTICAL climb, so favour hovering forms
-  jupiter: { fg: ['lightPod', 'crystalCluster', 'flora', 'floatingIsle'], mid: ['floatingIsle', 'lightPod', 'crystalCluster', 'bannerStone'], bg: ['floatingIsle', 'arch', 'monolith'] },
-  // icy rings
-  saturn: { fg: ['iceShelf', 'crystalCluster', 'lightPod', 'duneRipple'], mid: ['iceShelf', 'floatingIsle', 'monolith', 'bannerStone'], bg: ['arch', 'iceShelf', 'spire'] },
-  // tilted ice — also a VERTICAL climb
-  uranus: { fg: ['iceShelf', 'crystalCluster', 'lightPod'], mid: ['iceShelf', 'floatingIsle', 'crystalCluster', 'bannerStone'], bg: ['iceShelf', 'arch', 'spire'] },
-  // deep-blue trenches
-  neptune: { fg: ['vent', 'flora', 'crystalCluster', 'lightPod'], mid: ['monolith', 'ruinPillar', 'iceShelf', 'bannerStone'], bg: ['spire', 'arch', 'monolith'] },
+  jupiter: { fg: ['lightPod', 'crystalCluster', 'flora', 'floatingIsle'], mid: ['floatingIsle', 'lightPod', 'crystalCluster', 'bannerStone'], bg: ['floatingIsle', 'floatingIsle', 'monolith'] },
+  // icy rings — flat sheets of ring-ice
+  saturn: { fg: ['iceShelf', 'crystalCluster', 'lightPod', 'duneRipple'], mid: ['iceShelf', 'floatingIsle', 'iceShelf', 'bannerStone'], bg: ['iceShelf', 'crystalCluster', 'iceShelf'] },
+  // tilted ice — also a VERTICAL climb; sharper crystal register than Saturn
+  uranus: { fg: ['iceShelf', 'crystalCluster', 'lightPod'], mid: ['crystalCluster', 'floatingIsle', 'iceShelf', 'bannerStone'], bg: ['crystalCluster', 'iceShelf', 'spire'] },
+  // deep-blue trenches — silent monoliths in the deep
+  neptune: { fg: ['vent', 'flora', 'crystalCluster', 'lightPod'], mid: ['monolith', 'flora', 'vent', 'bannerStone'], bg: ['monolith', 'monolith', 'ruinPillar'] },
 };
 
 /** Sensible default for moon / bonus levels: plain rocky ground with light. */
@@ -953,5 +1024,108 @@ export function makeSkyline(planetName: string, pal: Palette, width: number): TH
   // collapse ~30 authored pieces into ~5 draw calls
   bake(parts).forEach(m => { m.matrixAutoUpdate = false; g.add(m); });
   g.userData.skyline = true;
+  return g;
+}
+
+// ---------------------------------------------------------------------------
+// SKY SIGNATURE — the one unmistakable thing in each planet's sky
+// ---------------------------------------------------------------------------
+//
+// The skyline gives each world a horizon; this gives each world an IDENTITY
+// you can name from a single glance: Mercury's huge close sun, Venus's haze
+// bands, Earth's cumulus clouds and little sun, Mars's two potato moons,
+// Jupiter's gas bands and calm pale storm, Saturn's great ring arcing across
+// the whole sky, Uranus's aurora ribbons and vertical ring, Neptune's deep
+// slow storm spot. All unlit, all static or near-static, all cheap.
+
+function flat(color: number, opacity: number): THREE.MeshBasicMaterial {
+  const m = new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: false, fog: false });
+  return m;
+}
+
+export function makeSkyFeature(planetName: string, pal: Palette): THREE.Group {
+  const g = new THREE.Group();
+  const rnd = mulberry(0.4242);
+  const name = planetName.trim().toLowerCase();
+
+  if (name === 'mercury') {
+    // the Sun, enormous and close — asleep, so soft and warm, never glaring
+    put(g, gDiscBig(), flat(mix(0xffd9a0, pal.sky1, 0.25), 0.9), [26, 10, -2], [11, 11, 1]);
+    put(g, gPlane(), glowMat(0xffca88, 0.5, true), [26, 10, -2.5], [40, 40, 1]);
+    put(g, gPlane(), glowMat(0xffb46a, 0.25, true), [26, 10, -3], [70, 70, 1]);
+  } else if (name === 'venus') {
+    // stacked golden haze bands lying across the whole sky
+    for (let i = 0; i < 4; i++) {
+      const y = 6 + i * 5 + rnd() * 2;
+      put(g, gPlane(), glowMat(mix(0xffe2a0, pal.sky1, 0.3 + i * 0.15), 0.10 + (3 - i) * 0.025), [rnd() * 30 - 15, y, -1 - i], [90 + i * 30, 2.2 + i * 1.1, 1]);
+    }
+  } else if (name === 'earth') {
+    // a small warm sun + drifting cumulus clouds
+    put(g, gDiscBig(), flat(0xfff2c8, 0.95), [-30, 17, -2], [2.6, 2.6, 1]);
+    put(g, gPlane(), glowMat(0xfff0b8, 0.4, true), [-30, 17, -2.5], [14, 14, 1]);
+    const cloud = flat(0xffffff, 0.92);
+    const shadow = flat(mix(0xdfe8f2, pal.sky1, 0.3), 0.9);
+    for (let c = 0; c < 4; c++) {
+      const cx = -46 + c * 30 + rnd() * 12, cy = 10 + rnd() * 7, cs = 1.6 + rnd() * 1.6;
+      const cl = new THREE.Group();
+      put(cl, gBlob(), shadow, [0, -0.3 * cs, 0], [2.6 * cs, 0.8 * cs, 1.4 * cs]);
+      put(cl, gBlob(), cloud, [-0.9 * cs, 0, 0.1], [1.3 * cs, 0.9 * cs, 1.2 * cs]);
+      put(cl, gBlob(), cloud, [0.4 * cs, 0.25 * cs, 0], [1.5 * cs, 1.05 * cs, 1.3 * cs]);
+      put(cl, gBlob(), cloud, [1.3 * cs, -0.1 * cs, 0.1], [1.1 * cs, 0.75 * cs, 1.1 * cs]);
+      cl.position.set(cx, cy, -3 - c * 0.7);
+      g.add(cl);
+    }
+  } else if (name === 'mars') {
+    // two little potato moons, one dusty band
+    put(g, vPebble(1), rockMat(desat(mix(pal.light, 0xcfae90, 0.5), 0.3), { flat: true }), [-22, 16, -2], [1.7, 1.35, 1.5], [0.4, 0.8, 0.2]);
+    put(g, vPebble(2), rockMat(desat(mix(pal.ground, 0xa98168, 0.5), 0.3), { flat: true }), [18, 20, -3], [1.0, 0.8, 0.9], [0.2, 0.3, 0.5]);
+    put(g, gPlane(), glowMat(mix(0xe8b48a, pal.sky1, 0.4), 0.10), [0, 7, -4], [120, 3.4, 1]);
+  } else if (name === 'jupiter') {
+    // broad horizontal gas bands + the great calm storm (a soft peach oval)
+    const bandTones = [mix(pal.sky1, 0xf2d9b8, 0.5), mix(pal.ground, pal.sky0, 0.4), mix(pal.sky1, 0xd9a978, 0.45), mix(pal.hill, pal.sky1, 0.5)];
+    for (let i = 0; i < 4; i++) {
+      put(g, gPlane(), flat(bandTones[i]!, 0.30), [rnd() * 20 - 10, 6 + i * 12, -4 - i * 0.5], [140, 4.2 + rnd() * 2.4, 1]);
+    }
+    put(g, gDiscBig(), flat(mix(0xf0b08a, pal.sky1, 0.35), 0.5), [16, 24, -3.6], [5.2, 3.1, 1]);
+    put(g, gRingThin(), flat(0xfae8d2, 0.4), [16, 24, -3.5], [6.2, 3.7, 1]);
+  } else if (name === 'saturn') {
+    // THE ring — a giant pale-gold band sweeping across the entire sky
+    const ring = new THREE.Group();
+    put(ring, gRingThin(), flat(0xf0ddae, 0.55), [0, 0, 0], [56, 56, 1]);
+    put(ring, gRingThin(), flat(0xfff3d6, 0.38), [0, 0, 0], [50, 50, 1]);
+    put(ring, gRingThin(), flat(0xe8cf9a, 0.30), [0, 0, 0], [61.5, 61.5, 1]);
+    put(ring, gRingThin(), glowMat(0xffe9b8, 0.14), [0, 0, -0.5], [58, 58, 1]);
+    ring.position.set(10, -30, -6);
+    ring.rotation.z = -0.34;
+    g.add(ring);
+  } else if (name === 'uranus') {
+    // aurora ribbons + the sideways ring (Uranus rolls on its side)
+    for (let i = 0; i < 3; i++) {
+      const rib = put(g, vBanner(i % 4), glowMat(i === 1 ? 0xa8ffd8 : 0x9fe8ff, 0.12), [-14 + i * 13 + rnd() * 5, 30 + rnd() * 10, -5 - i], [7 + rnd() * 4, 18 + rnd() * 8, 1]);
+      rib.rotation.z = (rnd() - 0.5) * 0.3;
+    }
+    const vring = new THREE.Group();
+    put(vring, gRingThin(), flat(0xd6f4f8, 0.4), [0, 0, 0], [24, 24, 1]);
+    put(vring, gRingThin(), flat(0xeafcff, 0.25), [0, 0, 0], [20, 20, 1]);
+    put(vring, gRingThin(), glowMat(0xbfeef4, 0.14), [0, 0, -0.5], [27, 27, 1]);
+    vring.position.set(-16, 26, -8);
+    vring.rotation.z = Math.PI * 0.46; // near-vertical: the rolled-over planet's ring
+    vring.scale.x = 0.32;
+    g.add(vring);
+  } else if (name === 'neptune') {
+    // the great dark spot — a deep slow storm with pale wisp arcs
+    put(g, gDiscBig(), flat(mix(pal.sky0, 0x101c4a, 0.6), 0.55), [14, 18, -3], [5.4, 3.4, 1]);
+    put(g, gDiscBig(), flat(mix(pal.sky0, 0x1a2a60, 0.5), 0.5), [14.6, 18.3, -2.9], [3.4, 2.0, 1]);
+    put(g, gRingThin(), flat(0xdfe8ff, 0.22), [14, 18, -2.8], [6.6, 4.0, 1]);
+    // high wind streaks
+    for (let i = 0; i < 3; i++) {
+      put(g, gPlane(), glowMat(0xcadcff, 0.10), [rnd() * 40 - 20, 9 + i * 8, -4], [60 + rnd() * 40, 0.7, 1]);
+    }
+  } else {
+    // moons / unknown: a distant blue home dot — you can see where you began
+    put(g, gDiscBig(), flat(0x9fc4ff, 0.85), [20, 18, -3], [1.1, 1.1, 1]);
+    put(g, gPlane(), glowMat(0x9fc4ff, 0.3, true), [20, 18, -3.5], [6, 6, 1]);
+  }
+  freeze(g);
   return g;
 }

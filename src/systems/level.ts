@@ -4,7 +4,7 @@ import type { Planet } from '../core/types';
 import { makeStarMesh, makeFactBox, makePowerBox, makeGapCushion, makePlatform, disposeObject } from '../entities/meshes';
 import { makeLumin, luminsForPlanet, luminBaseOffset } from '../entities/creatures';
 import type { LuminKind } from '../entities/creatures';
-import { makeProp, propsForPlanet, makeSkyline } from '../entities/props';
+import { makeProp, propsForPlanet, makeSkyline, makeSkyFeature } from '../entities/props';
 import type { PropKind } from '../entities/props';
 import { paletteFrom, rockMat, disposeObject as _disposeShared } from './materials';
 import { generateLevel } from './levelgen';
@@ -191,6 +191,100 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
   stage.fill.color.setHex(P.sky[1]); stage.fill.intensity = 0.3;
   stage.rim.color.setHex(P.dust); stage.rim.intensity = 0.6;
 
+  // ---- per-planet atmosphere: each world breathes its own air ----
+  // (fog COLOUR tracks the sky each frame in setSkyBg; only density is authored)
+  const FOG: Record<string, number> = {
+    Mercury: 0.009,  // airless — crisp to the horizon
+    Venus: 0.024,    // thick golden haze
+    Earth: 0.012,    // clear day
+    Mars: 0.017,     // dust in the air
+    Jupiter: 0.017,  // deep gas
+    Saturn: 0.011,   // thin and icy
+    Uranus: 0.014,   // cold mist
+    Neptune: 0.022,  // deep-sea blue
+  };
+  (stage.scene.fog as THREE.FogExp2).density = FOG[P.name] ?? 0.014;
+
+  // ---- per-planet ground micro-detail: the row of shapes along the walking
+  // surface. This used to be the same hemisphere everywhere — the single
+  // biggest reason worlds looked copy-pasted up close. ----
+  const nm = P.name;
+  const grassMat = nm === 'Earth' ? rockMat(new THREE.Color(pal.hill).lerp(new THREE.Color(0x58c878), 0.55).getHex(), { rough: 0.9 }) : bmat;
+  const iceMat2 = rockMat(new THREE.Color(pal.light).lerp(new THREE.Color(0xffffff), 0.35).getHex(), { rough: 0.35, flat: true });
+  const strataMat2 = rockMat(new THREE.Color(P.hill).getHex(), { strata: true, rough: 1, flat: true });
+  const groundBump = (x: number, gy: number): void => {
+    const r = 1.2 + Math.random() * 0.4;
+    const add = (m: THREE.Mesh) => { groundGroup.add(m); };
+    switch (nm) {
+      case 'Mercury': { // crater rims between low regolith mounds
+        if (Math.random() < 0.4) {
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.7, 0.16, 6, 14), bmat);
+          rim.position.set(x, gy + 0.03, -0.3); rim.rotation.x = Math.PI / 2; rim.scale.y = 0.6; add(rim);
+        } else {
+          const b = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat);
+          b.position.set(x, gy, -0.3); b.scale.y = 0.28; add(b);
+        }
+        break;
+      }
+      case 'Venus': { // wind-carved plateau blocks with a pale top
+        const w = r * 1.6, h = 0.3 + Math.random() * 0.35;
+        const blk = new THREE.Mesh(new THREE.BoxGeometry(w, h, 2.6), strataMat2);
+        blk.position.set(x, gy + h / 2 - 0.12, -0.4); blk.rotation.y = (Math.random() - 0.5) * 0.1; add(blk);
+        const top = new THREE.Mesh(new THREE.BoxGeometry(w * 1.04, 0.08, 2.7), rockMat(pal.light, { rough: 0.8 }));
+        top.position.set(x, gy + h - 0.1, -0.4); add(top);
+        break;
+      }
+      case 'Earth': { // grassy mounds with reed tufts and tiny meadow flowers
+        const b = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.5), grassMat);
+        b.position.set(x, gy, -0.3); b.scale.y = 0.4; add(b);
+        if (Math.random() < 0.55) {
+          for (let k = 0; k < 3; k++) {
+            const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.5 + Math.random() * 0.3, 5), grassMat);
+            tuft.position.set(x + (Math.random() - 0.5) * 1.4, gy + 0.4, 0.4 + Math.random() * 0.6);
+            tuft.rotation.z = (Math.random() - 0.5) * 0.3; add(tuft);
+          }
+        }
+        if (Math.random() < 0.3) {
+          const fl = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), rockMat(0xffb0c8, { rough: 0.6 }));
+          fl.position.set(x + (Math.random() - 0.5), gy + 0.5, 0.9); add(fl);
+        }
+        break;
+      }
+      case 'Mars': { // stacked strata ledges — canyon country
+        const w = r * 1.5;
+        const s1 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.34, 2.5), strataMat2);
+        s1.position.set(x, gy + 0.05, -0.35); s1.rotation.y = (Math.random() - 0.5) * 0.14; add(s1);
+        if (Math.random() < 0.6) {
+          const s2 = new THREE.Mesh(new THREE.BoxGeometry(w * 0.62, 0.26, 2.2), bmat);
+          s2.position.set(x + (Math.random() - 0.5) * 0.5, gy + 0.32, -0.35); add(s2);
+        }
+        break;
+      }
+      case 'Saturn': { // flat ring-ice plates with a frosty nub
+        const pl = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.9, r, 0.22, 7), iceMat2);
+        pl.position.set(x, gy + 0.02, -0.3); pl.rotation.y = Math.random() * 2; add(pl);
+        if (Math.random() < 0.4) {
+          const nub = new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), iceMat2);
+          nub.position.set(x + (Math.random() - 0.5), gy + 0.28, 0.2); add(nub);
+        }
+        break;
+      }
+      case 'Neptune': { // smooth long seabed dunes with a soft coral nub
+        const b = new THREE.Mesh(new THREE.SphereGeometry(r * 1.5, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat);
+        b.position.set(x, gy, -0.35); b.scale.y = 0.18; add(b);
+        if (Math.random() < 0.3) {
+          const co = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.5, 5), rockMat(new THREE.Color(pal.light).lerp(new THREE.Color(0x9fd8ff), 0.4).getHex(), { rough: 0.7 }));
+          co.position.set(x + (Math.random() - 0.5) * 1.2, gy + 0.22, 0.5); add(co);
+        }
+        break;
+      }
+      default: { // moons / the rest: the classic soft mound
+        const b = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat);
+        b.position.set(x, gy, -0.3); b.scale.y = 0.4; add(b);
+      }
+    }
+  };
+
   // Authored step boundaries are written in the original 95-unit space; the
   // ground mesh AND the collision height must both use the scaled version.
   const scaledSteps = T.steps ? T.steps.map(s => [sx(s[0]), sx(s[1]), s[2]] as [number, number, number]) : undefined;
@@ -300,7 +394,7 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
       };
       steps!.forEach(s => {
         splitOut(s[0], s[1]).forEach(([a, b]) => { const w = b - a; const seg = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 4, 6), gmat); seg.position.set((a + b) / 2, GROUND_Y + s[2] - 2, -0.5); seg.receiveShadow = true; groundGroup.add(seg); });
-        for (let x = s[0]; x < s[1]; x += 2.4) { if (inGap(x + 1)) continue; const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + 1, GROUND_Y + s[2], -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
+        for (let x = s[0]; x < s[1]; x += 2.4) { if (inGap(x + 1)) continue; groundBump(x + 1, GROUND_Y + s[2]); }
       });
     } else {
       // build the base slab in segments so gaps are real holes you can see through
@@ -313,7 +407,7 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
         if (cursor < maxE) segs.push([cursor, maxE]);
       } else { segs.push([minE, maxE]); }
       segs.forEach(([a, b]) => { const w = b - a; const slab = new THREE.Mesh(new THREE.BoxGeometry(w, 4, 6), gmat); slab.position.set((a + b) / 2, GROUND_Y - 2, -0.5); slab.receiveShadow = true; groundGroup.add(slab); });
-      for (let x = -LEVEL_LEN / 2; x <= LEVEL_LEN / 2; x += 2.2) { if (inGap(x)) continue; const gy = groundAt(x); const bump = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), bmat); bump.position.set(x + Math.random() * 0.5, gy, -0.3); bump.scale.y = 0.4; groundGroup.add(bump); }
+      for (let x = -LEVEL_LEN / 2; x <= LEVEL_LEN / 2; x += 2.2) { if (inGap(x)) continue; groundBump(x + Math.random() * 0.5, groundAt(x)); }
     }
     // dark pit recess behind each gap (anchored to the gap's step height so it
     // reads as a real hole on stepped terrain too) + a catch cushion at the bottom
@@ -368,8 +462,9 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
       const g = makeProp(pr.kind as PropKind, pal, pr.scale, pr.seed);
       const z = pr.layer === 'near' ? 2.5 + pr.seed * 0.7
         : pr.layer === 'fg' ? 1.6 - pr.seed * 1.2
-          : pr.layer === 'mid' ? -5 - pr.seed * 5 : -15 - pr.seed * 8;
-      const py = (pr.layer === 'near' || pr.layer === 'fg') ? groundAt(pr.x) : GROUND_Y - 0.4;
+          : pr.layer === 'mid' ? -5 - pr.seed * 5 : -19 - pr.seed * 9;
+      const py = (pr.layer === 'near' || pr.layer === 'fg') ? groundAt(pr.x)
+        : pr.layer === 'mid' ? GROUND_Y - 0.4 : GROUND_Y - 1.6;
       g.position.set(pr.x, py, z);
       if (pr.layer === 'near' || pr.layer === 'fg') { scene.add(g); game.decor.push(g); }
       else { stage.parallaxMid.add(g); }
@@ -412,8 +507,21 @@ export function loadLevel(game: Game, P: Planet, instant: boolean): void {
 
   // layered far skyline (replaces the row of identical hemisphere "hills")
   stage.parallaxMid.add(makeSkyline(P.name, pal, LEVEL_LEN * 1.4));
-  const orb = new THREE.Mesh(new THREE.SphereGeometry(6, 32, 24), new THREE.MeshStandardMaterial({ color: P.sky[1], emissive: P.sky[1], emissiveIntensity: 0.15, roughness: 0.8, transparent: true, opacity: 0.6 })); orb.position.set(game.levelType === 'vertical' ? -9 : 8, game.levelType === 'vertical' ? game.levelHeight * 0.6 : 9, -30); stage.parallaxMid.add(orb);
-  if (P.rings) { const ring = new THREE.Mesh(new THREE.RingGeometry(7, 10, 48), new THREE.MeshBasicMaterial({ color: 0xf0e0b0, side: THREE.DoubleSide, transparent: true, opacity: 0.4 })); ring.position.copy(orb.position); ring.rotation.x = Math.PI * 0.42; stage.parallaxMid.add(ring); }
+
+  // each planet's unmistakable sky signature (Saturn's great ring, Earth's
+  // clouds + sun, Mars's two moons, Neptune's dark spot, Uranus's aurora...)
+  const skyFeat = makeSkyFeature(P.name, pal);
+  skyFeat.position.set(0, game.levelType === 'vertical' ? game.levelHeight * 0.35 : 0, -34);
+  stage.parallaxMid.add(skyFeat);
+
+  // the companion orb stays only where the signature doesn't already own the
+  // sky's focal point (Mercury has the giant sun; Mars its two moons)
+  if (P.name !== 'Mercury' && P.name !== 'Mars') {
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(6, 24, 18), new THREE.MeshStandardMaterial({ color: P.sky[1], emissive: P.sky[1], emissiveIntensity: 0.15, roughness: 0.8, transparent: true, opacity: 0.6 }));
+    orb.position.set(game.levelType === 'vertical' ? -9 : 8, game.levelType === 'vertical' ? game.levelHeight * 0.6 : 9, -30);
+    stage.parallaxMid.add(orb);
+    if (P.rings) { const ring = new THREE.Mesh(new THREE.RingGeometry(7, 10, 48), new THREE.MeshBasicMaterial({ color: 0xf0e0b0, side: THREE.DoubleSide, transparent: true, opacity: 0.4 })); ring.position.copy(orb.position); ring.rotation.x = Math.PI * 0.42; stage.parallaxMid.add(ring); }
+  }
 
   // moving platforms (travel mechanic)
   (T.movingPlats || []).forEach(mp => {
